@@ -9,8 +9,9 @@ let incidents       = [];
 let activeFilter    = 'all';
 let pickingCoords   = false;
 let pendingCoords   = null;
-let photoFiles      = [null, null, null];
+let photoFiles      = [null, null, null]; // compressed base64 previews
 let submitting      = false;
+let imgbbKey        = '';
 
 // ── Boot ───────────────────────────────── //
 document.addEventListener('DOMContentLoaded', () => {
@@ -20,8 +21,33 @@ document.addEventListener('DOMContentLoaded', () => {
   initPhotoSlots();
   initReportPanel();
   initFilterBar();
+  loadConfig();
   loadIncidents();
 });
+
+// ── Fetch public config (ImgBB key) ───── //
+async function loadConfig() {
+  try {
+    const res  = await fetch(`${CONFIG.GAS_URL}?action=getConfig`);
+    const data = await res.json();
+    if (data.imgbbKey) imgbbKey = data.imgbbKey;
+  } catch (err) {
+    console.warn('Could not load config:', err);
+  }
+}
+
+// ── ImgBB upload ───────────────────────── //
+async function uploadToImgBB(base64) {
+  if (!imgbbKey) throw new Error('ImgBB key not configured — contact admin');
+  const b64 = base64.includes(',') ? base64.split(',')[1] : base64;
+  const formData = new FormData();
+  formData.append('image', b64);
+  formData.append('key', imgbbKey);
+  const res  = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: formData });
+  const data = await res.json();
+  if (data.success) return data.data.url;
+  throw new Error(data.error?.message || 'ImgBB upload failed');
+}
 
 // ── Map ────────────────────────────────── //
 function initMap() {
@@ -301,8 +327,25 @@ async function handleSubmit(e) {
 
   submitting = true;
   const btn = document.getElementById('submit-btn');
-  btn.textContent = 'Submitting…';
+  btn.textContent = 'Uploading photos…';
   btn.disabled = true;
+
+  // Upload any photos to ImgBB first — get back URLs
+  let photoUrls = [];
+  const filesToUpload = photoFiles.filter(Boolean);
+  if (filesToUpload.length) {
+    try {
+      btn.textContent = `Uploading ${filesToUpload.length} photo${filesToUpload.length > 1 ? 's' : ''}…`;
+      photoUrls = await Promise.all(filesToUpload.map(b64 => uploadToImgBB(b64)));
+    } catch (err) {
+      submitting = false;
+      btn.textContent = 'Submit for Review';
+      btn.disabled = false;
+      return showFormError(`Photo upload failed: ${err.message}`);
+    }
+  }
+
+  btn.textContent = 'Submitting…';
 
   const payload = {
     action:      'submitReport',
@@ -311,7 +354,7 @@ async function handleSubmit(e) {
     description: desc,
     lat:         parseFloat(document.getElementById('inc-lat').value) || null,
     lng:         parseFloat(document.getElementById('inc-lng').value) || null,
-    photos:      photoFiles.filter(Boolean),
+    photos:      photoUrls,
   };
 
   try {

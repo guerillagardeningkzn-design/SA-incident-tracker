@@ -7,6 +7,7 @@ let allReports  = [];
 let activeTab   = 'pending';
 let cctvCameras = [];
 let cctvTimer   = null;
+let imgbbKey    = '';
 let blurState   = { photos:[], index:0, rects:[], drawing:false, startX:0, startY:0, reportId:null };
 
 // ── Boot ───────────────────────────────── //
@@ -40,6 +41,7 @@ function initPin() {
       const screen = document.getElementById('admin-screen');
       screen.classList.add('active');
       initAdminScreen();
+      fetchAdminConfig();
     } else {
       err.textContent = 'Incorrect PIN';
       entered = '';
@@ -75,7 +77,39 @@ function initPin() {
   });
 }
 
-// ── Admin screen init ──────────────────── //
+// ── Fetch admin config ─────────────────── //
+async function fetchAdminConfig() {
+  try {
+    const res  = await fetch(`${CONFIG.GAS_URL}?action=getAdminConfig&pin=${CONFIG.ADMIN_PIN}`);
+    const data = await res.json();
+    if (data.error) { console.warn('Config error:', data.error); return; }
+    imgbbKey = data.imgbbKey || '';
+    // Populate settings fields
+    const keyInput = document.getElementById('settings-imgbb-key');
+    if (keyInput) keyInput.value = imgbbKey ? '••••••••' : '';
+    if (imgbbKey) {
+      document.getElementById('imgbb-status').textContent = '✓ Key set';
+      document.getElementById('imgbb-status').className = 'success mono';
+    }
+  } catch (err) {
+    console.warn('Could not load admin config:', err);
+  }
+}
+
+// ── ImgBB upload ───────────────────────── //
+async function uploadToImgBB(base64) {
+  if (!imgbbKey) throw new Error('ImgBB key not set — save it in Settings first');
+  const b64 = base64.includes(',') ? base64.split(',')[1] : base64;
+  const formData = new FormData();
+  formData.append('image', b64);
+  formData.append('key', imgbbKey);
+  const res  = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: formData });
+  const data = await res.json();
+  if (data.success) return data.data.url;
+  throw new Error(data.error?.message || 'ImgBB upload failed');
+}
+
+
 function initAdminScreen() {
   initAdminTypeSelect();
   loadReports();
@@ -108,6 +142,9 @@ function bindAdminEvents() {
   // Add verified incident
   document.getElementById('btn-add-incident').addEventListener('click', addVerifiedIncident);
 
+  // Settings — ImgBB key
+  document.getElementById('btn-save-imgbb').addEventListener('click', saveImgBBKey);
+
   // Blur tool
   initBlurTool();
 }
@@ -117,11 +154,17 @@ async function loadReports() {
   try {
     const res  = await fetch(`${CONFIG.GAS_URL}?action=getAll&pin=${CONFIG.ADMIN_PIN}`);
     const data = await res.json();
+    if (data.error) {
+      toast(`Error: ${data.error}`, 'error', 6000);
+      console.error('getAll error:', data.error);
+      return;
+    }
     allReports = data.reports || [];
     updateStats();
     renderQueue();
   } catch (err) {
-    toast('Could not load reports', 'error');
+    toast(`Could not load reports: ${err.message}`, 'error', 6000);
+    console.error('loadReports fetch error:', err);
   }
 }
 
@@ -261,6 +304,32 @@ function initAdminTypeSelect() {
     const t = getType(sel.value);
     icon.textContent = t ? t.icon : '📌';
   });
+}
+
+// ── Settings ───────────────────────────── //
+async function saveImgBBKey() {
+  const input = document.getElementById('settings-imgbb-key');
+  const key   = input.value.trim();
+  if (!key || key === '••••••••') return toast('Enter a valid ImgBB API key', 'error');
+
+  try {
+    const res  = await fetch(CONFIG.GAS_URL, {
+      method: 'POST',
+      body:   JSON.stringify({ action: 'setConfig', pin: CONFIG.ADMIN_PIN, imgbbKey: key }),
+    });
+    const data = await res.json();
+    if (data.ok || data.success) {
+      imgbbKey = key;
+      input.value = '••••••••';
+      document.getElementById('imgbb-status').textContent = '✓ Key saved';
+      document.getElementById('imgbb-status').className = 'success mono';
+      toast('ImgBB key saved', 'success');
+    } else {
+      toast(data.error || 'Save failed', 'error');
+    }
+  } catch (err) {
+    toast('Network error: ' + err.message, 'error');
+  }
 }
 
 // ── CCTV ───────────────────────────────── //
@@ -436,25 +505,34 @@ function changeBlurPhoto(dir) {
 }
 
 async function saveAllBlurred() {
+  toast('Uploading blurred photos…', 'default', 8000);
   try {
+    // Re-upload modified photos (base64) to ImgBB — pass through existing URLs unchanged
+    const uploadedUrls = await Promise.all(
+      blurState.photos.map(p =>
+        p.startsWith('http') ? Promise.resolve(p) : uploadToImgBB(p)
+      )
+    );
     const res  = await fetch(CONFIG.GAS_URL, {
-      method:  'POST',
-      body:    JSON.stringify({
-        action:  'updatePhotos',
-        id:      blurState.reportId,
-        photos:  blurState.photos,
-        pin:     CONFIG.ADMIN_PIN,
+      method: 'POST',
+      body:   JSON.stringify({
+        action: 'updatePhotos',
+        id:     blurState.reportId,
+        photos: uploadedUrls,
+        pin:    CONFIG.ADMIN_PIN,
       }),
     });
     const data = await res.json();
     if (data.success) {
-      toast('Photos saved', 'success');
+      toast('Blurred photos saved', 'success');
       const r = allReports.find(r => r.id === blurState.reportId);
-      if (r) r.photos = blurState.photos;
+      if (r) r.photos = uploadedUrls;
     } else {
-      toast('Save failed', 'error');
+      toast('Save failed: ' + (data.error || 'unknown'), 'error');
     }
-  } catch { toast('Network error', 'error'); }
+  } catch (err) {
+    toast('Upload error: ' + err.message, 'error');
+  }
   closeBlurTool();
 }
 
