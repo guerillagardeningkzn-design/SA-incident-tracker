@@ -316,9 +316,8 @@ async function handleSubmit(e) {
 
   try {
     const res  = await fetch(CONFIG.GAS_URL, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(payload),
+      method: 'POST',
+      body:   JSON.stringify(payload),
     });
     const data = await res.json();
 

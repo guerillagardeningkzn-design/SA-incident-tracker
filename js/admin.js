@@ -197,7 +197,6 @@ async function moderateReport(id, action) {
   try {
     const res  = await fetch(CONFIG.GAS_URL, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ action: 'moderate', id, decision: action, pin: CONFIG.ADMIN_PIN }),
     });
     const data = await res.json();
@@ -228,7 +227,6 @@ async function addVerifiedIncident() {
   try {
     const res  = await fetch(CONFIG.GAS_URL, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ action: 'addVerified', type, area, description:desc, lat, lng, pin: CONFIG.ADMIN_PIN }),
     });
     const data = await res.json();
@@ -441,7 +439,6 @@ async function saveAllBlurred() {
   try {
     const res  = await fetch(CONFIG.GAS_URL, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({
         action:  'updatePhotos',
         id:      blurState.reportId,
