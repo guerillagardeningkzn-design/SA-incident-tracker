@@ -318,6 +318,25 @@
           </div>
         </div>
 
+        <!-- Settings -->
+        <div class="sidebar-section">
+          <p class="section-label">Settings</p>
+          <div style="display:flex;flex-direction:column;gap:.75rem">
+            <div class="form-group">
+              <label>ImgBB API Key</label>
+              <input type="password" id="settings-imgbb-key" placeholder="Paste key from imgbb.com"/>
+              <div style="display:flex;align-items:center;gap:.75rem;margin-top:.4rem">
+                <button class="btn btn-outline btn-sm" id="btn-save-imgbb">Save Key</button>
+                <span id="imgbb-status" class="mono muted" style="font-size:.6rem;letter-spacing:.1em"></span>
+              </div>
+              <p style="font-size:.7rem;color:var(--md-muted);margin-top:.4rem;line-height:1.5">
+                Free key at <a href="https://imgbb.com" target="_blank" style="color:var(--md-gold)">imgbb.com</a>.
+                Required for photo uploads. Stored securely in GAS Script Properties.
+              </p>
+            </div>
+          </div>
+        </div>
+
       </aside>
     </div>
   </div>
