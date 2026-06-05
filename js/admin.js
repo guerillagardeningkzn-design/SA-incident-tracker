@@ -417,16 +417,47 @@ function initBlurTool() {
 window.openBlur = function(reportId) {
   const report = allReports.find(r => r.id === reportId);
   if (!report?.photos?.length) return;
-  blurState = { photos: [...report.photos], index: 0, rects: [], drawing: false, startX:0, startY:0, reportId };
+  blurState = {
+    photos:    [...report.photos],
+    index:     0,
+    rects:     [],
+    drawing:   false,
+    startX:    0, startY: 0,
+    reportId,
+    localUrls: {}, // blob/data URLs keyed by index — avoids canvas CORS taint
+  };
   document.getElementById('blur-wrapper').classList.remove('hidden');
   loadBlurPhoto();
 };
 
-function loadBlurPhoto() {
+async function loadBlurPhoto() {
   const canvas = document.getElementById('blur-canvas');
   const ctx    = canvas.getContext('2d');
-  const img    = new Image();
-  img.crossOrigin = 'anonymous';
+  const src    = blurState.photos[blurState.index];
+
+  // Use cached local URL if already loaded, or if it's already a data URL
+  let imageUrl = blurState.localUrls[blurState.index];
+
+  if (!imageUrl) {
+    if (src.startsWith('data:') || src.startsWith('blob:')) {
+      // Already local — safe to draw directly
+      imageUrl = src;
+    } else {
+      // External URL (ImgBB) — fetch as blob to avoid canvas CORS taint
+      // Without this, toDataURL() throws SecurityError and blur never saves
+      try {
+        const res  = await fetch(src);
+        const blob = await res.blob();
+        imageUrl   = URL.createObjectURL(blob);
+      } catch (err) {
+        toast('Cannot load photo: ' + err.message, 'error');
+        return;
+      }
+    }
+    blurState.localUrls[blurState.index] = imageUrl;
+  }
+
+  const img = new Image();
   img.onload = () => {
     canvas.width  = img.naturalWidth;
     canvas.height = img.naturalHeight;
@@ -435,8 +466,8 @@ function loadBlurPhoto() {
     document.getElementById('blur-counter').textContent =
       `Photo ${blurState.index + 1} of ${blurState.photos.length}`;
   };
-  img.onerror = () => toast('Cannot load photo', 'error');
-  img.src = blurState.photos[blurState.index];
+  img.onerror = () => toast('Cannot display photo', 'error');
+  img.src = imageUrl;
 }
 
 function getCanvasCoords(e, canvas) {
@@ -476,8 +507,9 @@ function endRect(e, canvas) {
 }
 
 function redrawCanvas(ctx, canvas) {
+  // Use cached blob/data URL — never re-fetch external URL which would re-taint canvas
+  const src = blurState.localUrls[blurState.index] || blurState.photos[blurState.index];
   const img = new Image();
-  img.src = blurState.photos[blurState.index];
   img.onload = () => {
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     blurState.rects.forEach(r => {
@@ -485,6 +517,7 @@ function redrawCanvas(ctx, canvas) {
       ctx.fillRect(r.x, r.y, r.w, r.h);
     });
   };
+  img.src = src;
 }
 
 function applyBlur(ctx, canvas) {
@@ -492,7 +525,19 @@ function applyBlur(ctx, canvas) {
     ctx.fillStyle = '#000000';
     ctx.fillRect(r.x, r.y, r.w, r.h);
   });
-  blurState.photos[blurState.index] = canvas.toDataURL('image/jpeg', 0.85);
+
+  let dataUrl;
+  try {
+    dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+  } catch (err) {
+    // If this throws, canvas is still tainted — blob fetch in loadBlurPhoto should prevent this
+    toast('Could not save blur — canvas security error: ' + err.message, 'error');
+    return;
+  }
+
+  // Update both photos array (for upload) and localUrls cache (for redraw)
+  blurState.photos[blurState.index]    = dataUrl;
+  blurState.localUrls[blurState.index] = dataUrl;
   blurState.rects = [];
   toast('Blur applied to this photo', 'success');
 }
