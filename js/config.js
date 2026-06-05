@@ -5,10 +5,10 @@
 ══════════════════════════════════════════ */
 
 const CONFIG = {
-  GAS_URL: 'YOUR_GAS_WEB_APP_URL_HERE',
-  MAP_CENTER: [-29.8587, 31.0218], // Durban / KZN
+  GAS_URL: 'https://script.google.com/macros/s/AKfycbxV4Zj-LSJzeB1ufQmfUtOlibCU2JnWvYa552SH0MWJIkbEheJ9uAGAKlmUIsYUmtSv/exec',
+  MAP_CENTER: [-30.4709923, 30.5991048], // Ifafa / KZN
   MAP_ZOOM: 12,
-  ADMIN_PIN: '0000', // Change this — also set in GAS
+  ADMIN_PIN: '1234', // Change this — also set in GAS
   MAX_PHOTOS: 3,
   CCTV_REFRESH_SECONDS: 60,
 };
