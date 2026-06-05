@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>SA Incident Tracker • Durban / KZN</title>
+  <meta name="description" content="Community safety reporting for Durban and KZN. Report incidents anonymously — reviewed before going live."/>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23110e09'/><text x='16' y='22' text-anchor='middle' font-size='18' fill='%23c9943c' font-family='serif'>✦</text></svg>"/>
+  <link rel="stylesheet" href="style.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    body { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
+
+    /* ── Map fills viewport below nav ── */
+    #map {
+      flex: 1;
+      margin-top: var(--nav-h);
+      z-index: 1;
+    }
+
+    /* ── Filter bar ─────────────────── */
+    #filter-bar {
+      position: fixed;
+      top: calc(var(--nav-h) + .75rem);
+      left: 50%; transform: translateX(-50%);
+      z-index: 400;
+      display: flex; gap: .4rem; flex-wrap: wrap; justify-content: center;
+      padding: 0 1rem;
+      max-width: 100vw;
+    }
+    .filter-btn {
+      font-family: 'Syne Mono', monospace;
+      font-size: .55rem; letter-spacing: .1em; text-transform: uppercase;
+      padding: .3rem .7rem;
+      background: rgba(17,14,9,.88); backdrop-filter: blur(8px);
+      border: 1px solid var(--md-border-lt); border-radius: 50px;
+      color: var(--md-muted); cursor: pointer; transition: all .2s;
+      white-space: nowrap;
+    }
+    .filter-btn.active { color: var(--md-gold-lt); border-color: var(--md-gold-dk); }
+    .filter-btn:hover  { color: var(--md-gold-lt); border-color: var(--md-gold-dk); }
+
+    /* ── Report button (FAB) ─────────── */
+    #fab-report {
+      position: fixed;
+      bottom: 2rem; right: 1.5rem; z-index: 400;
+      width: 56px; height: 56px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--md-gold-dk), var(--md-gold));
+      border: none; cursor: pointer;
+      font-size: 1.4rem; color: var(--md-black);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 24px rgba(201,148,60,.35);
+      transition: transform .2s, box-shadow .2s;
+    }
+    #fab-report:hover { transform: scale(1.08); box-shadow: 0 6px 32px rgba(201,148,60,.5); }
+
+    /* ── Report panel (slide up) ─────── */
+    #report-panel {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 450;
+      background: var(--md-dark);
+      border-top: 1px solid var(--md-border-lt);
+      border-radius: 16px 16px 0 0;
+      padding: 1.5rem 1.5rem 2rem;
+      transform: translateY(100%);
+      transition: transform .35s cubic-bezier(.32,.72,0,1);
+      max-height: 90dvh; overflow-y: auto;
+    }
+    #report-panel.open { transform: translateY(0); }
+
+    .panel-handle {
+      width: 40px; height: 4px; border-radius: 2px;
+      background: var(--md-border-lt);
+      margin: 0 auto 1.25rem;
+    }
+
+    #report-form { display: flex; flex-direction: column; gap: 1rem; }
+
+    /* ── Photo strip ─────────────────── */
+    .photo-strip {
+      display: flex; gap: .75rem; flex-wrap: wrap;
+    }
+    .photo-slot {
+      width: 80px; height: 80px;
+      border: 1px dashed var(--md-border-lt);
+      border-radius: var(--md-radius);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: border-color .2s;
+      position: relative; overflow: hidden;
+      flex-shrink: 0;
+    }
+    .photo-slot:hover { border-color: var(--md-gold-dk); }
+    .photo-slot img {
+      width: 100%; height: 100%; object-fit: cover;
+      position: absolute; inset: 0;
+    }
+    .photo-slot .slot-label {
+      font-size: .6rem; color: var(--md-muted); text-align: center;
+      line-height: 1.3; padding: .25rem;
+    }
+    .photo-slot input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer;
+      width: 100%; height: 100%; padding: 0;
+    }
+    .photo-slot .remove-photo {
+      position: absolute; top: 2px; right: 2px; z-index: 2;
+      background: rgba(0,0,0,.7); border: none; border-radius: 50%;
+      width: 18px; height: 18px; cursor: pointer;
+      font-size: .65rem; color: white; display: none;
+      align-items: center; justify-content: center;
+    }
+    .photo-slot.has-image .remove-photo { display: flex; }
+
+    /* ── Coords row ──────────────────── */
+    .coords-row {
+      display: grid; grid-template-columns: 1fr 1fr; gap: .75rem;
+    }
+    .coords-hint {
+      font-family: 'Syne Mono', monospace; font-size: .58rem;
+      color: var(--md-muted); letter-spacing: .06em; margin-top: .2rem;
+    }
+
+    /* ── Map coord picker ────────────── */
+    #map-pick-hint {
+      position: fixed;
+      top: calc(var(--nav-h) + .5rem);
+      left: 50%; transform: translateX(-50%);
+      z-index: 500;
+      background: rgba(17,14,9,.95);
+      border: 1px solid var(--md-gold-dk);
+      border-radius: var(--md-radius);
+      padding: .6rem 1.2rem;
+      font-family: 'Syne Mono', monospace;
+      font-size: .65rem; letter-spacing: .1em; color: var(--md-gold-lt);
+      display: none;
+    }
+
+    /* ── Incident popup ──────────────── */
+    .leaflet-popup-content-wrapper {
+      background: var(--md-panel) !important;
+      border: 1px solid var(--md-border-lt) !important;
+      border-radius: var(--md-radius) !important;
+      box-shadow: 0 8px 32px rgba(0,0,0,.5) !important;
+      color: var(--md-cream) !important;
+    }
+    .leaflet-popup-tip { background: var(--md-panel) !important; }
+    .popup-type {
+      font-family: 'Cinzel', serif; font-size: .8rem;
+      color: var(--md-gold-lt); margin-bottom: .4rem;
+    }
+    .popup-area  { font-size: .8rem; color: var(--md-muted); margin-bottom: .3rem; }
+    .popup-desc  { font-size: .82rem; font-weight: 300; line-height: 1.6; }
+    .popup-time  {
+      font-family: 'Syne Mono', monospace; font-size: .58rem;
+      letter-spacing: .1em; color: var(--md-gold-dk); margin-top: .5rem;
+    }
+    .popup-photos {
+      display: flex; gap: .4rem; margin-top: .5rem; flex-wrap: wrap;
+    }
+    .popup-photos img {
+      width: 60px; height: 60px; object-fit: cover;
+      border-radius: 2px; border: 1px solid var(--md-border);
+      cursor: pointer;
+    }
+
+    /* ── Map coord dialog ────────────── */
+    #coord-dialog {
+      position: fixed; inset: 0; z-index: 600;
+      background: rgba(10,9,6,.85); backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center;
+      padding: 1.5rem;
+    }
+    .coord-dialog-box {
+      background: var(--md-surface);
+      border: 1px solid var(--md-border-lt);
+      border-radius: var(--md-radius);
+      padding: 1.75rem;
+      width: 100%; max-width: 360px;
+    }
+    .coord-dialog-box h3 {
+      font-size: 1rem; margin-bottom: .5rem;
+    }
+    .coord-dialog-box p {
+      font-size: .82rem; font-weight: 300;
+      color: rgba(240,230,206,.6); margin-bottom: 1.25rem;
+      line-height: 1.6;
+    }
+    .coord-values {
+      font-family: 'Syne Mono', monospace; font-size: .7rem;
+      letter-spacing: .1em; color: var(--md-gold);
+      background: var(--md-panel); border: 1px solid var(--md-border);
+      border-radius: var(--md-radius); padding: .6rem .9rem;
+      margin-bottom: 1.25rem;
+    }
+    .coord-dialog-actions { display: flex; gap: .75rem; }
+  </style>
+</head>
+<body>
+
+  <div id="cursor-dot"  aria-hidden="true"></div>
+  <div id="cursor-ring" aria-hidden="true"></div>
+
+  <!-- Nav -->
+  <nav class="site-nav">
+    <a href="/" class="nav-brand">
+      <span class="ornament">✦</span> MD Works
+    </a>
+    <span class="nav-title">SA Incident Tracker · Durban / KZN</span>
+    <div class="nav-spacer"></div>
+    <div class="nav-actions">
+      <a href="admin.html" class="btn btn-outline btn-sm">Admin ↗</a>
+    </div>
+  </nav>
+
+  <!-- Map -->
+  <div id="map"></div>
+
+  <!-- Map pick hint -->
+  <div id="map-pick-hint">Tap on the map to set location — then Esc to cancel</div>
+
+  <!-- Filter bar -->
+  <div id="filter-bar">
+    <button class="filter-btn active" data-filter="all">All</button>
+    <button class="filter-btn" data-filter="Security">Security</button>
+    <button class="filter-btn" data-filter="Emergency">Emergency</button>
+    <button class="filter-btn" data-filter="Infrastructure">Infrastructure</button>
+    <button class="filter-btn" data-filter="Animals">Animals</button>
+    <button class="filter-btn" data-filter="Civil">Civil</button>
+  </div>
+
+  <!-- FAB -->
+  <button id="fab-report" title="Report an incident" aria-label="Report an incident">＋</button>
+
+  <!-- Report panel -->
+  <div id="report-panel" role="dialog" aria-modal="true" aria-label="Report an incident">
+    <div class="panel-handle"></div>
+
+    <p class="section-label">Report an Incident</p>
+    <p style="font-size:.82rem;font-weight:300;color:rgba(240,230,206,.55);margin-bottom:1rem;line-height:1.6">
+      Anonymous · Your report waits for moderator review before appearing on the map.
+    </p>
+
+    <form id="report-form" novalidate>
+
+      <!-- Type -->
+      <div class="form-group">
+        <label for="inc-type">Incident Type *</label>
+        <div class="type-select-wrap">
+          <span class="type-icon" id="type-icon">📌</span>
+          <select id="inc-type" required>
+            <option value="">— Select type —</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Area -->
+      <div class="form-group">
+        <label for="inc-area">Area / Suburb / Landmark *</label>
+        <input type="text" id="inc-area" placeholder="e.g. Bluff, Westville, N2 near..." required/>
+      </div>
+
+      <!-- Description -->
+      <div class="form-group">
+        <label for="inc-desc">What did you see / hear? *</label>
+        <textarea id="inc-desc" placeholder="Brief description of the incident…" required></textarea>
+      </div>
+
+      <!-- Coordinates -->
+      <div class="form-group">
+        <label>Location (optional)</label>
+        <div class="coords-row">
+          <input type="number" id="inc-lat" placeholder="Latitude" step="any"/>
+          <input type="number" id="inc-lng" placeholder="Longitude" step="any"/>
+        </div>
+        <p class="coords-hint">
+          <button type="button" id="pick-on-map" class="btn btn-outline btn-sm" style="margin-top:.4rem">
+            📍 Pick on map
+          </button>
+        </p>
+      </div>
+
+      <!-- Photos -->
+      <div class="form-group">
+        <label>Photos (optional · up to 3)</label>
+        <div class="photo-strip" id="photo-strip"></div>
+      </div>
+
+      <!-- Submit -->
+      <button type="submit" class="btn btn-gold" id="submit-btn">
+        Submit for Review
+      </button>
+
+      <p id="form-error" class="danger hidden" style="font-size:.8rem;margin-top:.25rem"></p>
+
+    </form>
+  </div>
+
+  <!-- Coord dialog -->
+  <div id="coord-dialog" class="hidden">
+    <div class="coord-dialog-box">
+      <h3>Use this location?</h3>
+      <p>Coordinates selected on map:</p>
+      <div class="coord-values" id="coord-display">—</div>
+      <div class="coord-dialog-actions">
+        <button class="btn btn-outline" id="coord-cancel">Cancel</button>
+        <button class="btn btn-gold"    id="coord-confirm">Use Location</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/map.js"></script>
+</body>
+</html>
