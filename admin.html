@@ -6,6 +6,7 @@
   <title>Admin — SA Incident Tracker</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23110e09'/><text x='16' y='22' text-anchor='middle' font-size='18' fill='%23c9943c' font-family='serif'>✦</text></svg>"/>
   <link rel="stylesheet" href="style.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <style>
     body { min-height: 100dvh; }
 
@@ -183,6 +184,81 @@
       font-family: 'Syne Mono', monospace; font-size: .68rem;
       letter-spacing: .1em; color: var(--md-muted);
     }
+
+    /* ── Map picker modal ─────────────── */
+    #map-picker-modal {
+      position: fixed; inset: 0; z-index: 700;
+      background: rgba(10,9,6,.92); backdrop-filter: blur(4px);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 1.5rem; gap: 1rem;
+    }
+    #map-picker-modal h3 { font-size: 1rem; }
+    #map-picker-modal p {
+      font-family: 'Syne Mono', monospace; font-size: .65rem;
+      letter-spacing: .12em; color: var(--md-muted);
+    }
+    #admin-map-pick {
+      width: 100%; max-width: 700px; height: 50dvh;
+      border: 1px solid var(--md-border-lt); border-radius: var(--md-radius);
+      cursor: crosshair;
+    }
+    #map-picker-coords {
+      font-family: 'Syne Mono', monospace; font-size: .7rem;
+      letter-spacing: .1em; color: var(--md-gold);
+      background: var(--md-panel); border: 1px solid var(--md-border);
+      border-radius: var(--md-radius); padding: .5rem 1rem;
+      min-width: 260px; text-align: center;
+    }
+    .map-picker-actions { display: flex; gap: .75rem; }
+
+    /* ── Comments ─────────────────────── */
+    .comments-section {
+      margin-top: .75rem; padding-top: .75rem;
+      border-top: 1px solid var(--md-border);
+    }
+    .comments-label {
+      font-family: 'Syne Mono', monospace; font-size: .58rem;
+      letter-spacing: .14em; text-transform: uppercase;
+      color: var(--md-gold-dk); margin-bottom: .6rem;
+    }
+    .comment-list { display: flex; flex-direction: column; gap: .4rem; margin-bottom: .6rem; }
+    .comment-item {
+      background: var(--md-panel); border-radius: var(--md-radius);
+      padding: .5rem .75rem;
+    }
+    .comment-meta { display: flex; gap: .75rem; align-items: center; margin-bottom: .2rem; }
+    .comment-author {
+      font-family: 'Syne Mono', monospace; font-size: .58rem;
+      letter-spacing: .1em; color: var(--md-gold-dk);
+    }
+    .comment-time {
+      font-family: 'Syne Mono', monospace; font-size: .55rem; color: var(--md-muted);
+    }
+    .comment-text {
+      font-size: .82rem; font-weight: 300;
+      color: rgba(240,230,206,.7); line-height: 1.5;
+    }
+    .comment-input-row { display: flex; gap: .4rem; }
+    .comment-input-row input { flex: 1; font-size: .82rem; padding: .45rem .75rem; }
+
+    /* ── Report status selector ──────── */
+    .status-row {
+      display: flex; align-items: center; gap: .5rem;
+      margin-top: .6rem; flex-wrap: wrap;
+    }
+    .status-label {
+      font-family: 'Syne Mono', monospace; font-size: .58rem;
+      letter-spacing: .12em; text-transform: uppercase; color: var(--md-muted);
+    }
+    .status-btn {
+      font-family: 'Syne Mono', monospace;
+      font-size: .55rem; letter-spacing: .1em; text-transform: uppercase;
+      padding: .25rem .65rem; border-radius: 50px; border: 1px solid;
+      cursor: pointer; background: transparent; transition: all .2s; opacity: .45;
+    }
+    .status-btn.current { opacity: 1; font-weight: 700; }
+    .status-btn:hover   { opacity: .85; }
   </style>
 </head>
 <body>
@@ -307,13 +383,16 @@
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
               <div class="form-group">
                 <label>Lat</label>
-                <input type="number" id="admin-lat" step="any"/>
+                <input type="number" id="admin-lat" step="any" placeholder="—"/>
               </div>
               <div class="form-group">
                 <label>Lng</label>
-                <input type="number" id="admin-lng" step="any"/>
+                <input type="number" id="admin-lng" step="any" placeholder="—"/>
               </div>
             </div>
+            <button type="button" class="btn btn-outline btn-sm" id="btn-admin-pick-map">
+              📍 Pick on map
+            </button>
             <button class="btn btn-gold btn-sm" id="btn-add-incident">Add Directly</button>
           </div>
         </div>
@@ -358,8 +437,21 @@
     </div>
   </div>
 
+  <!-- Map picker modal -->
+  <div id="map-picker-modal" class="hidden">
+    <h3>Pick Incident Location</h3>
+    <p>Tap anywhere on the map to set coordinates</p>
+    <div id="admin-map-pick"></div>
+    <div id="map-picker-coords">No location selected</div>
+    <div class="map-picker-actions">
+      <button class="btn btn-outline" id="map-picker-cancel">Cancel</button>
+      <button class="btn btn-gold"    id="map-picker-confirm" disabled>Use Location</button>
+    </div>
+  </div>
+
   <div id="toast"></div>
 
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="js/config.js"></script>
   <script src="js/admin.js"></script>
 </body>
