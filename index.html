@@ -40,6 +40,70 @@
     .filter-btn.active { color: var(--md-gold-lt); border-color: var(--md-gold-dk); }
     .filter-btn:hover  { color: var(--md-gold-lt); border-color: var(--md-gold-dk); }
 
+    /* ── Filter divider between category + time ── */
+    .filter-divider {
+      width: 1px; height: 20px; align-self: center;
+      background: var(--md-border-lt);
+    }
+
+    /* ── Time filter buttons ─────────── */
+    .time-btn {
+      font-family: 'Syne Mono', monospace;
+      font-size: .55rem; letter-spacing: .1em; text-transform: uppercase;
+      padding: .3rem .7rem;
+      background: rgba(17,14,9,.88); backdrop-filter: blur(8px);
+      border: 1px solid var(--md-border-lt); border-radius: 50px;
+      color: var(--md-muted); cursor: pointer; transition: all .2s;
+      white-space: nowrap;
+    }
+    .time-btn.active { color: var(--md-gold-lt); border-color: var(--md-gold-dk); }
+    .time-btn:hover  { color: var(--md-gold-lt); border-color: var(--md-gold-dk); }
+
+    /* ── Address search bar ──────────── */
+    #search-bar {
+      position: fixed;
+      bottom: 2rem; left: 1.5rem; z-index: 400;
+      display: flex; gap: .4rem; align-items: center;
+      max-width: calc(100vw - 100px);
+    }
+    #search-input {
+      font-family: 'Syne Mono', monospace;
+      font-size: .68rem; letter-spacing: .08em;
+      padding: .55rem 1rem;
+      background: rgba(17,14,9,.92); backdrop-filter: blur(10px);
+      border: 1px solid var(--md-border-lt); border-radius: 50px;
+      color: var(--md-cream);
+      width: 220px; transition: border-color .2s, width .3s;
+      outline: none;
+    }
+    #search-input:focus {
+      border-color: var(--md-gold-dk); width: 280px;
+    }
+    #search-input::placeholder { color: var(--md-muted); }
+    #search-btn {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: rgba(17,14,9,.92); backdrop-filter: blur(10px);
+      border: 1px solid var(--md-border-lt); color: var(--md-muted);
+      cursor: pointer; transition: all .2s;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .9rem; flex-shrink: 0;
+    }
+    #search-btn:hover { border-color: var(--md-gold-dk); color: var(--md-gold-lt); }
+    #search-btn.loading { animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Search result marker ────────── */
+    .search-pulse {
+      width: 20px; height: 20px; border-radius: 50%;
+      background: rgba(201,148,60,.5);
+      border: 2px solid var(--md-gold);
+      animation: pulse 1.5s ease-out 3;
+    }
+    @keyframes pulse {
+      0%   { transform: scale(1);   opacity: 1; }
+      100% { transform: scale(2.5); opacity: 0; }
+    }
+
     /* ── Report button (FAB) ─────────── */
     #fab-report {
       position: fixed;
@@ -225,10 +289,21 @@
     <button class="filter-btn" data-filter="Infrastructure">Infrastructure</button>
     <button class="filter-btn" data-filter="Animals">Animals</button>
     <button class="filter-btn" data-filter="Civil">Civil</button>
+    <div class="filter-divider"></div>
+    <button class="time-btn" data-time="today">Today</button>
+    <button class="time-btn" data-time="week">7 Days</button>
+    <button class="time-btn" data-time="month">30 Days</button>
+    <button class="time-btn active" data-time="all">All Time</button>
   </div>
 
   <!-- FAB -->
   <button id="fab-report" title="Report an incident" aria-label="Report an incident">＋</button>
+
+  <!-- Address search -->
+  <div id="search-bar">
+    <input type="text" id="search-input" placeholder="Search address…" autocomplete="off"/>
+    <button id="search-btn" title="Search" aria-label="Search address">🔍</button>
+  </div>
 
   <!-- Report panel -->
   <div id="report-panel" role="dialog" aria-modal="true" aria-label="Report an incident">
