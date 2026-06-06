@@ -5,13 +5,15 @@
 
 // ── State ──────────────────────────────── //
 let map, markersLayer;
-let incidents       = [];
-let activeFilter    = 'all';
-let pickingCoords   = false;
-let pendingCoords   = null;
-let photoFiles      = [null, null, null]; // compressed base64 previews
-let submitting      = false;
-let imgbbKey        = '';
+let incidents        = [];
+let activeFilter     = 'all';
+let activeTimeFilter = 'all';
+let pickingCoords    = false;
+let pendingCoords    = null;
+let photoFiles       = [null, null, null];
+let submitting       = false;
+let imgbbKey         = '';
+let searchMarker     = null;
 
 // ── Boot ───────────────────────────────── //
 document.addEventListener('DOMContentLoaded', () => {
@@ -21,6 +23,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initPhotoSlots();
   initReportPanel();
   initFilterBar();
+  initTimeFilter();
+  initSearch();
   loadConfig();
   loadIncidents();
 });
@@ -94,22 +98,27 @@ async function loadIncidents() {
 // ── Markers ────────────────────────────── //
 function renderMarkers() {
   markersLayer.clearLayers();
-  const filtered = activeFilter === 'all'
-    ? incidents
-    : incidents.filter(i => getType(i.type).category === activeFilter);
+
+  const now      = Date.now();
+  const cutoffs  = { today: 86400000, week: 604800000, month: 2592000000, all: Infinity };
+  const cutoff   = cutoffs[activeTimeFilter] ?? Infinity;
+
+  const filtered = incidents.filter(i => {
+    const categoryMatch = activeFilter === 'all' || getType(i.type).category === activeFilter;
+    const ms            = i.timestamp ? now - new Date(i.timestamp).getTime() : 0;
+    const timeMatch     = ms <= cutoff;
+    return categoryMatch && timeMatch;
+  });
 
   filtered.forEach(inc => {
     if (!inc.lat || !inc.lng) return;
     const t = getType(inc.type);
     const icon = L.divIcon({
       html: `<div class="marker-dot" style="background:${t.color};color:${t.color}"></div>`,
-      className: '',
-      iconSize:   [14, 14],
-      iconAnchor: [7, 7],
+      className: '', iconSize: [14,14], iconAnchor: [7,7],
     });
-
     const marker = L.marker([inc.lat, inc.lng], { icon });
-    marker.bindPopup(buildPopup(inc), { maxWidth: 280 });
+    marker.bindPopup(buildPopup(inc), { maxWidth: 300 });
     markersLayer.addLayer(marker);
   });
 }
@@ -188,7 +197,81 @@ function initFilterBar() {
   });
 }
 
-// ── Report panel ───────────────────────── //
+// ── Time filter ────────────────────────── //
+function initTimeFilter() {
+  document.querySelectorAll('.time-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeTimeFilter = btn.dataset.time;
+      renderMarkers();
+    });
+  });
+}
+
+// ── Address search ─────────────────────── //
+function initSearch() {
+  const input = document.getElementById('search-input');
+  const btn   = document.getElementById('search-btn');
+
+  btn.addEventListener('click', () => runSearch(input.value.trim()));
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') runSearch(input.value.trim());
+  });
+}
+
+async function runSearch(query) {
+  if (!query) return;
+
+  const btn = document.getElementById('search-btn');
+  btn.textContent = '⏳';
+  btn.classList.add('loading');
+
+  try {
+    // Nominatim — free, no API key, bias to South Africa
+    const url  = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&countrycodes=za`;
+    const res  = await fetch(url, { headers: { 'Accept-Language': 'en-ZA' } });
+    const data = await res.json();
+
+    if (!data.length) {
+      toast('No results found for that address', 'error', 4000);
+      return;
+    }
+
+    const { lat, lon, display_name } = data[0];
+    const latlng = [parseFloat(lat), parseFloat(lon)];
+
+    // Pan to result
+    map.setView(latlng, 15, { animate: true });
+
+    // Remove previous search marker
+    if (searchMarker) map.removeLayer(searchMarker);
+
+    // Add pulse marker at result
+    searchMarker = L.marker(latlng, {
+      icon: L.divIcon({
+        html: `<div class="search-pulse"></div>`,
+        className: '', iconSize: [20,20], iconAnchor: [10,10],
+      }),
+    }).addTo(map);
+
+    // Show short address in toast
+    const shortName = display_name.split(',').slice(0,3).join(',');
+    toast(`📍 ${shortName}`, 'success', 4000);
+
+    // Auto-remove pulse marker after animation (3 pulses × 1.5s)
+    setTimeout(() => {
+      if (searchMarker) { map.removeLayer(searchMarker); searchMarker = null; }
+    }, 5000);
+
+  } catch (err) {
+    toast('Search failed: ' + err.message, 'error');
+  } finally {
+    btn.textContent = '🔍';
+    btn.classList.remove('loading');
+  }
+}
 function initReportPanel() {
   const fab    = document.getElementById('fab-report');
   const panel  = document.getElementById('report-panel');
