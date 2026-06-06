@@ -116,6 +116,7 @@ function renderMarkers() {
 
 function buildPopup(inc) {
   const t    = getType(inc.type);
+  const rs   = getStatus(inc.reportStatus || 'active');
   const time = inc.timestamp
     ? new Date(inc.timestamp).toLocaleString('en-ZA', { dateStyle:'medium', timeStyle:'short' })
     : '—';
@@ -127,13 +128,23 @@ function buildPopup(inc) {
     </div>`;
   }
 
+  const statusHtml = `<span style="
+    font-family:'Syne Mono',monospace;font-size:.55rem;letter-spacing:.1em;
+    text-transform:uppercase;padding:.15rem .5rem;border-radius:50px;
+    border:1px solid ${rs.color};color:${rs.color};
+    background:${rs.color}18;display:inline-block;
+  ">${rs.label}</span>`;
+
   return `
     <div>
       <div class="popup-type">${t.icon} ${t.label}</div>
-      <div class="popup-area">📍 ${inc.area}</div>
+      <div class="popup-area">📍 ${sanitise(inc.area)}</div>
       <div class="popup-desc">${sanitise(inc.description)}</div>
       ${photosHtml}
-      <div class="popup-time">${time}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.4rem;margin-top:.5rem">
+        <div class="popup-time">${time}</div>
+        ${statusHtml}
+      </div>
     </div>`;
 }
 

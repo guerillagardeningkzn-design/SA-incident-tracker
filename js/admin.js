@@ -3,11 +3,13 @@
 ══════════════════════════════════════════ */
 
 // ── State ──────────────────────────────── //
-let allReports  = [];
-let activeTab   = 'pending';
-let cctvCameras = [];
-let cctvTimer   = null;
-let imgbbKey    = '';
+let allReports     = [];
+let activeTab      = 'pending';
+let cctvCameras    = [];
+let cctvTimer      = null;
+let imgbbKey       = '';
+let adminPickerMap = null;
+let adminPickedCoords = null;
 let blurState   = { photos:[], index:0, rects:[], drawing:false, startX:0, startY:0, reportId:null };
 
 // ── Boot ───────────────────────────────── //
@@ -142,6 +144,11 @@ function bindAdminEvents() {
   // Add verified incident
   document.getElementById('btn-add-incident').addEventListener('click', addVerifiedIncident);
 
+  // Map coord picker for admin form
+  document.getElementById('btn-admin-pick-map').addEventListener('click', openMapPicker);
+  document.getElementById('map-picker-cancel').addEventListener('click', closeMapPicker);
+  document.getElementById('map-picker-confirm').addEventListener('click', confirmMapPick);
+
   // Settings — ImgBB key
   document.getElementById('btn-save-imgbb').addEventListener('click', saveImgBBKey);
 
@@ -195,6 +202,7 @@ function renderQueue() {
 function buildReportCard(r) {
   const t    = getType(r.type);
   const time = new Date(r.timestamp).toLocaleString('en-ZA', { dateStyle:'short', timeStyle:'short' });
+  const rs   = getStatus(r.reportStatus || 'active');
   const div  = document.createElement('div');
   div.className = `report-card card ${r.status}`;
   div.dataset.id = r.id;
@@ -217,11 +225,30 @@ function buildReportCard(r) {
     actionsHtml = `<button class="btn btn-success btn-sm" onclick="moderateReport('${r.id}','approve')">↩ Restore</button>`;
   }
 
+  // Status buttons
+  const statusBtns = REPORT_STATUSES.map(s => `
+    <button class="status-btn ${s.value === (r.reportStatus || 'active') ? 'current' : ''}"
+      style="color:${s.color};border-color:${s.color}"
+      onclick="changeReportStatus('${r.id}', '${s.value}', this)"
+    >${s.label}</button>
+  `).join('');
+
+  // Comments
+  const commentItems = (r.comments || []).map(c => `
+    <div class="comment-item">
+      <div class="comment-meta">
+        <span class="comment-author">${sanitise(c.author)}</span>
+        <span class="comment-time">${c.timestamp}</span>
+      </div>
+      <div class="comment-text">${sanitise(c.text)}</div>
+    </div>
+  `).join('');
+
   div.innerHTML = `
     <div class="report-header">
       <div>
         <div class="report-type">${t.icon} ${t.label}</div>
-        <div class="report-area">📍 ${r.area}</div>
+        <div class="report-area">📍 ${sanitise(r.area)}</div>
       </div>
       <div style="text-align:right">
         <span class="badge badge-${r.status}">${r.status}</span>
@@ -232,6 +259,22 @@ function buildReportCard(r) {
     ${r.lat ? `<p class="report-coords">📌 ${r.lat}, ${r.lng}</p>` : ''}
     ${photosHtml}
     <div class="report-actions">${actionsHtml}</div>
+
+    <div class="status-row">
+      <span class="status-label">Status:</span>
+      ${statusBtns}
+    </div>
+
+    <div class="comments-section">
+      <div class="comments-label">Notes / Comments</div>
+      <div class="comment-list" id="comments-${r.id}">
+        ${commentItems || '<p style="font-size:.78rem;color:var(--md-muted);font-weight:300">No comments yet.</p>'}
+      </div>
+      <div class="comment-input-row">
+        <input type="text" id="comment-input-${r.id}" placeholder="Add a note…"/>
+        <button class="btn btn-outline btn-sm" onclick="submitComment('${r.id}')">Add</button>
+      </div>
+    </div>
   `;
   return div;
 }
@@ -332,7 +375,118 @@ async function saveImgBBKey() {
   }
 }
 
-// ── CCTV ───────────────────────────────── //
+// ── Admin map coord picker ─────────────── //
+function openMapPicker() {
+  const modal = document.getElementById('map-picker-modal');
+  modal.classList.remove('hidden');
+
+  // Init map once
+  if (!adminPickerMap) {
+    adminPickerMap = L.map('admin-map-pick', {
+      center: CONFIG.MAP_CENTER,
+      zoom:   CONFIG.MAP_ZOOM,
+    });
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '© OpenStreetMap © CARTO',
+      subdomains: 'abcd', maxZoom: 19,
+    }).addTo(adminPickerMap);
+
+    let pickMarker = null;
+    adminPickerMap.on('click', e => {
+      adminPickedCoords = e.latlng;
+      if (pickMarker) adminPickerMap.removeLayer(pickMarker);
+      pickMarker = L.circleMarker(e.latlng, {
+        radius: 8, color: '#c9943c', fillColor: '#c9943c', fillOpacity: 1,
+      }).addTo(adminPickerMap);
+      document.getElementById('map-picker-coords').textContent =
+        `${e.latlng.lat.toFixed(6)},  ${e.latlng.lng.toFixed(6)}`;
+      document.getElementById('map-picker-confirm').disabled = false;
+    });
+  }
+
+  // Force resize in case modal was hidden on init
+  setTimeout(() => adminPickerMap.invalidateSize(), 100);
+  adminPickedCoords = null;
+  document.getElementById('map-picker-coords').textContent = 'Tap the map to set location';
+  document.getElementById('map-picker-confirm').disabled = true;
+}
+
+function confirmMapPick() {
+  if (!adminPickedCoords) return;
+  document.getElementById('admin-lat').value = adminPickedCoords.lat.toFixed(6);
+  document.getElementById('admin-lng').value = adminPickedCoords.lng.toFixed(6);
+  closeMapPicker();
+}
+
+function closeMapPicker() {
+  document.getElementById('map-picker-modal').classList.add('hidden');
+}
+
+// ── Comments ───────────────────────────── //
+async function submitComment(reportId) {
+  const input = document.getElementById(`comment-input-${reportId}`);
+  const text  = input?.value.trim();
+  if (!text) return;
+
+  try {
+    const res  = await fetch(CONFIG.GAS_URL, {
+      method: 'POST',
+      body:   JSON.stringify({
+        action: 'addComment', id: reportId,
+        text, author: 'Admin', pin: CONFIG.ADMIN_PIN,
+      }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      const r = allReports.find(r => r.id === reportId);
+      if (r) r.comments = data.comments;
+      const list = document.getElementById(`comments-${reportId}`);
+      if (list) {
+        list.innerHTML = data.comments.map(c => `
+          <div class="comment-item">
+            <div class="comment-meta">
+              <span class="comment-author">${sanitise(c.author)}</span>
+              <span class="comment-time">${c.timestamp}</span>
+            </div>
+            <div class="comment-text">${sanitise(c.text)}</div>
+          </div>
+        `).join('');
+      }
+      input.value = '';
+    } else {
+      toast(data.error || 'Comment failed', 'error');
+    }
+  } catch (err) {
+    toast('Network error: ' + err.message, 'error');
+  }
+}
+
+// ── Report status ──────────────────────── //
+async function changeReportStatus(reportId, newStatus, btn) {
+  try {
+    const res  = await fetch(CONFIG.GAS_URL, {
+      method: 'POST',
+      body:   JSON.stringify({
+        action: 'updateStatus', id: reportId,
+        reportStatus: newStatus, pin: CONFIG.ADMIN_PIN,
+      }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      const r = allReports.find(r => r.id === reportId);
+      if (r) r.reportStatus = newStatus;
+      btn.closest('.status-row').querySelectorAll('.status-btn').forEach(b => {
+        b.classList.toggle('current', b === btn);
+      });
+      toast('Status updated', 'success');
+    } else {
+      toast(data.error || 'Update failed', 'error');
+    }
+  } catch (err) {
+    toast('Network error: ' + err.message, 'error');
+  }
+}
+
 function loadCameras() {
   const stored = localStorage.getItem('cctv_cameras');
   cctvCameras = stored ? JSON.parse(stored) : [

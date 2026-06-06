@@ -5,10 +5,10 @@
 ══════════════════════════════════════════ */
 
 const CONFIG = {
-  GAS_URL: 'https://script.google.com/macros/s/AKfycbxV4Zj-LSJzeB1ufQmfUtOlibCU2JnWvYa552SH0MWJIkbEheJ9uAGAKlmUIsYUmtSv/exec',
-  MAP_CENTER: [-30.4709923, 30.5991048], // Ifafa / KZN
+  GAS_URL: 'YOUR_GAS_WEB_APP_URL_HERE',
+  MAP_CENTER: [-29.8587, 31.0218], // Durban / KZN
   MAP_ZOOM: 12,
-  ADMIN_PIN: '1234', // Change this — also set in GAS
+  ADMIN_PIN: '0000', // Change this — also set in GAS
   MAX_PHOTOS: 3,
   CCTV_REFRESH_SECONDS: 60,
 };
@@ -47,4 +47,17 @@ function groupedTypes() {
     (acc[t.category] = acc[t.category] || []).push(t);
     return acc;
   }, {});
+}
+
+// ── Report statuses ────────────────────── //
+const REPORT_STATUSES = [
+  { value: 'active',         label: 'Active',               color: '#ef4444' },
+  { value: 'investigating',  label: 'Under Investigation',  color: '#f59e0b' },
+  { value: 'resolved',       label: 'Resolved',             color: '#4caf7a' },
+  { value: 'false_alarm',    label: 'False Alarm',          color: '#6b7280' },
+  { value: 'duplicate',      label: 'Duplicate',            color: '#6b7280' },
+];
+
+function getStatus(value) {
+  return REPORT_STATUSES.find(s => s.value === value) || REPORT_STATUSES[0];
 }
