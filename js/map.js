@@ -135,12 +135,40 @@ function buildPopup(inc) {
     background:${rs.color}18;display:inline-block;
   ">${rs.label}</span>`;
 
+  let commentsHtml = '';
+  if (inc.comments?.length) {
+    const items = inc.comments.map(c => `
+      <div style="
+        background:rgba(33,28,20,.8);border-radius:3px;
+        padding:.4rem .6rem;margin-bottom:.35rem;
+      ">
+        <div style="display:flex;gap:.6rem;align-items:center;margin-bottom:.2rem">
+          <span style="font-family:'Syne Mono',monospace;font-size:.55rem;
+            letter-spacing:.1em;color:#7a5815">${sanitise(c.author)}</span>
+          <span style="font-family:'Syne Mono',monospace;font-size:.52rem;
+            color:#7a6d58">${c.timestamp}</span>
+        </div>
+        <div style="font-size:.78rem;font-weight:300;
+          color:rgba(240,230,206,.7);line-height:1.5">${sanitise(c.text)}</div>
+      </div>
+    `).join('');
+
+    commentsHtml = `
+      <div style="margin-top:.6rem;padding-top:.6rem;border-top:1px solid #2c2619">
+        <div style="font-family:'Syne Mono',monospace;font-size:.55rem;
+          letter-spacing:.2em;text-transform:uppercase;color:#7a5815;
+          margin-bottom:.4rem">Updates</div>
+        ${items}
+      </div>`;
+  }
+
   return `
     <div>
       <div class="popup-type">${t.icon} ${t.label}</div>
       <div class="popup-area">📍 ${sanitise(inc.area)}</div>
       <div class="popup-desc">${sanitise(inc.description)}</div>
       ${photosHtml}
+      ${commentsHtml}
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.4rem;margin-top:.5rem">
         <div class="popup-time">${time}</div>
         ${statusHtml}
