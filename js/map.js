@@ -67,7 +67,7 @@ function initMap() {
     maxZoom: 19,
   }).addTo(map);
 
-  L.control.zoom({ position: 'bottomleft' }).addTo(map);
+  L.control.zoom({ position: 'topright' }).addTo(map);
 
   markersLayer = L.layerGroup().addTo(map);
 
