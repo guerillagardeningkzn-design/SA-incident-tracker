@@ -8,7 +8,7 @@ const CONFIG = {
   GAS_URL: 'https://script.google.com/macros/s/AKfycbxV4Zj-LSJzeB1ufQmfUtOlibCU2JnWvYa552SH0MWJIkbEheJ9uAGAKlmUIsYUmtSv/exec',
   MAP_CENTER: [-30.4648047, 30.6348523], // Durban / KZN
   MAP_ZOOM: 12,
-  ADMIN_PIN: '0000', // Change this — also set in GAS
+  ADMIN_PIN: '', // Set via login screen
   MAX_PHOTOS: 3,
   CCTV_REFRESH_SECONDS: 60,
 };

@@ -3,14 +3,14 @@
 ══════════════════════════════════════════ */
 
 // ── State ──────────────────────────────── //
-let allReports     = [];
-let activeTab      = 'pending';
-let cctvCameras    = [];
-let cctvTimer      = null;
-let imgbbKey       = '';
+let allReports = [];
+let activeTab = 'pending';
+let cctvCameras = [];
+let cctvTimer = null;
+let imgbbKey = '';
 let adminPickerMap = null;
 let adminPickedCoords = null;
-let blurState   = { photos:[], index:0, rects:[], drawing:false, startX:0, startY:0, reportId:null };
+let blurState = { photos: [], index: 0, rects: [], drawing: false, startX: 0, startY: 0, reportId: null };
 
 // ── Boot ───────────────────────────────── //
 document.addEventListener('DOMContentLoaded', () => {
@@ -22,11 +22,11 @@ document.addEventListener('DOMContentLoaded', () => {
 // ── PIN ────────────────────────────────── //
 function initPin() {
   let entered = '';
-  const dots  = document.getElementById('pin-dots');
-  const err   = document.getElementById('pin-error');
+  const dots = document.getElementById('pin-dots');
+  const err = document.getElementById('pin-error');
 
   // Build dot indicators
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 6; i++) {
     const d = document.createElement('div');
     d.className = 'pin-dot'; dots.appendChild(d);
   }
@@ -37,27 +37,47 @@ function initPin() {
     });
   }
 
-  function trySubmit() {
-    if (entered === CONFIG.ADMIN_PIN) {
+  async function trySubmit() {
+    // We try to login by making a request to the backend with the entered PIN
+    // If the PIN is incorrect, authAdmin in Code.gs will throw an Unauthorised error
+    try {
+      const res = await fetch(`${CONFIG.GAS_URL}?action=getAdminConfig&pin=${entered}`);
+      const data = await res.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      // If we got here, PIN is valid. Store it for subsequent requests.
+      CONFIG.ADMIN_PIN = entered;
+      imgbbKey = data.imgbbKey || '';
+
       document.getElementById('login-screen').style.display = 'none';
       const screen = document.getElementById('admin-screen');
       screen.classList.add('active');
       initAdminScreen();
-      fetchAdminConfig();
-    } else {
-      err.textContent = 'Incorrect PIN';
+
+      // Update settings field if key exists
+      const keyInput = document.getElementById('settings-imgbb-key');
+      if (keyInput) keyInput.value = imgbbKey ? '••••••••' : '';
+      if (imgbbKey) {
+        document.getElementById('imgbb-status').textContent = '✓ Key set';
+        document.getElementById('imgbb-status').className = 'success mono';
+      }
+    } catch (e) {
+      err.textContent = e.message === 'Unauthorised' ? 'Incorrect PIN' : e.message;
       entered = '';
       updateDots();
-      setTimeout(() => err.textContent = '', 2000);
+      setTimeout(() => err.textContent = '', 3000);
     }
   }
 
   document.querySelectorAll('[data-d]').forEach(btn => {
     btn.addEventListener('click', () => {
-      if (entered.length >= 4) return;
+      if (entered.length >= 6) return;
       entered += btn.dataset.d;
       updateDots();
-      if (entered.length === 4) setTimeout(trySubmit, 200);
+      if (entered.length === 6) setTimeout(trySubmit, 200);
     });
   });
 
@@ -70,32 +90,18 @@ function initPin() {
   // Keyboard support
   document.addEventListener('keydown', e => {
     if (document.getElementById('admin-screen').classList.contains('active')) return;
-    if (e.key >= '0' && e.key <= '9' && entered.length < 4) {
+    if (e.key >= '0' && e.key <= '9' && entered.length < 6) {
       entered += e.key; updateDots();
-      if (entered.length === 4) setTimeout(trySubmit, 200);
+      if (entered.length === 6) setTimeout(trySubmit, 200);
     }
-    if (e.key === 'Backspace') { entered = entered.slice(0,-1); updateDots(); }
+    if (e.key === 'Backspace') { entered = entered.slice(0, -1); updateDots(); }
     if (e.key === 'Enter') trySubmit();
   });
 }
 
 // ── Fetch admin config ─────────────────── //
 async function fetchAdminConfig() {
-  try {
-    const res  = await fetch(`${CONFIG.GAS_URL}?action=getAdminConfig&pin=${CONFIG.ADMIN_PIN}`);
-    const data = await res.json();
-    if (data.error) { console.warn('Config error:', data.error); return; }
-    imgbbKey = data.imgbbKey || '';
-    // Populate settings fields
-    const keyInput = document.getElementById('settings-imgbb-key');
-    if (keyInput) keyInput.value = imgbbKey ? '••••••••' : '';
-    if (imgbbKey) {
-      document.getElementById('imgbb-status').textContent = '✓ Key set';
-      document.getElementById('imgbb-status').className = 'success mono';
-    }
-  } catch (err) {
-    console.warn('Could not load admin config:', err);
-  }
+  // Already fetched during login trySubmit now
 }
 
 // ── ImgBB upload ───────────────────────── //
@@ -105,7 +111,7 @@ async function uploadToImgBB(base64) {
   const formData = new FormData();
   formData.append('image', b64);
   formData.append('key', imgbbKey);
-  const res  = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: formData });
+  const res = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: formData });
   const data = await res.json();
   if (data.success) return data.data.url;
   throw new Error(data.error?.message || 'ImgBB upload failed');
@@ -159,7 +165,7 @@ function bindAdminEvents() {
 // ── Reports ────────────────────────────── //
 async function loadReports() {
   try {
-    const res  = await fetch(`${CONFIG.GAS_URL}?action=getAll&pin=${CONFIG.ADMIN_PIN}`);
+    const res = await fetch(`${CONFIG.GAS_URL}?action=getAll&pin=${CONFIG.ADMIN_PIN}`);
     const data = await res.json();
     if (data.error) {
       toast(`Error: ${data.error}`, 'error', 6000);
@@ -177,16 +183,16 @@ async function loadReports() {
 
 function updateStats() {
   const today = new Date().toDateString();
-  document.getElementById('stat-pending').textContent  = allReports.filter(r => r.status === 'pending').length;
+  document.getElementById('stat-pending').textContent = allReports.filter(r => r.status === 'pending').length;
   document.getElementById('stat-approved').textContent = allReports.filter(r => r.status === 'approved').length;
   document.getElementById('stat-rejected').textContent = allReports.filter(r => r.status === 'rejected').length;
-  document.getElementById('stat-today').textContent    = allReports.filter(r =>
+  document.getElementById('stat-today').textContent = allReports.filter(r =>
     new Date(r.timestamp).toDateString() === today
   ).length;
 }
 
 function renderQueue() {
-  const list    = document.getElementById('queue-list');
+  const list = document.getElementById('queue-list');
   const filtered = allReports.filter(r => r.status === activeTab);
 
   if (!filtered.length) {
@@ -195,22 +201,22 @@ function renderQueue() {
   }
 
   list.innerHTML = '';
-  filtered.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp))
+  filtered.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
     .forEach(r => list.appendChild(buildReportCard(r)));
 }
 
 function buildReportCard(r) {
-  const t    = getType(r.type);
-  const time = new Date(r.timestamp).toLocaleString('en-ZA', { dateStyle:'short', timeStyle:'short' });
-  const rs   = getStatus(r.reportStatus || 'active');
-  const div  = document.createElement('div');
+  const t = getType(r.type);
+  const time = new Date(r.timestamp).toLocaleString('en-ZA', { dateStyle: 'short', timeStyle: 'short' });
+  const rs = getStatus(r.reportStatus || 'active');
+  const div = document.createElement('div');
   div.className = `report-card card ${r.status}`;
   div.dataset.id = r.id;
 
   let photosHtml = '';
   if (r.photos?.length) {
     photosHtml = `<div class="report-photos">
-      ${r.photos.map((url,i) => `<img src="${url}" data-report="${r.id}" data-index="${i}" alt="Photo ${i+1}" onclick="openBlur('${r.id}')">`).join('')}
+      ${r.photos.map((url, i) => `<img src="${url}" data-report="${r.id}" data-index="${i}" alt="Photo ${i + 1}" onclick="openBlur('${r.id}')">`).join('')}
     </div>`;
   }
 
@@ -281,9 +287,9 @@ function buildReportCard(r) {
 
 async function moderateReport(id, action) {
   try {
-    const res  = await fetch(CONFIG.GAS_URL, {
-      method:  'POST',
-      body:    JSON.stringify({ action: 'moderate', id, decision: action, pin: CONFIG.ADMIN_PIN }),
+    const res = await fetch(CONFIG.GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'moderate', id, decision: action, pin: CONFIG.ADMIN_PIN }),
     });
     const data = await res.json();
     if (data.success) {
@@ -305,15 +311,15 @@ async function addVerifiedIncident() {
   const type = document.getElementById('admin-inc-type').value;
   const area = document.getElementById('admin-inc-area').value.trim();
   const desc = document.getElementById('admin-inc-desc').value.trim();
-  const lat  = parseFloat(document.getElementById('admin-lat').value) || null;
-  const lng  = parseFloat(document.getElementById('admin-lng').value) || null;
+  const lat = parseFloat(document.getElementById('admin-lat').value) || null;
+  const lng = parseFloat(document.getElementById('admin-lng').value) || null;
 
   if (!type || !area || !desc) return toast('Type, area and description required', 'error');
 
   try {
-    const res  = await fetch(CONFIG.GAS_URL, {
-      method:  'POST',
-      body:    JSON.stringify({ action: 'addVerified', type, area, description:desc, lat, lng, pin: CONFIG.ADMIN_PIN }),
+    const res = await fetch(CONFIG.GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'addVerified', type, area, description: desc, lat, lng, pin: CONFIG.ADMIN_PIN }),
     });
     const data = await res.json();
     if (data.success) {
@@ -330,7 +336,7 @@ async function addVerifiedIncident() {
 
 // ── Admin type select ──────────────────── //
 function initAdminTypeSelect() {
-  const sel  = document.getElementById('admin-inc-type');
+  const sel = document.getElementById('admin-inc-type');
   const icon = document.getElementById('admin-type-icon');
   const groups = groupedTypes();
   Object.entries(groups).forEach(([cat, types]) => {
@@ -352,13 +358,13 @@ function initAdminTypeSelect() {
 // ── Settings ───────────────────────────── //
 async function saveImgBBKey() {
   const input = document.getElementById('settings-imgbb-key');
-  const key   = input.value.trim();
+  const key = input.value.trim();
   if (!key || key === '••••••••') return toast('Enter a valid ImgBB API key', 'error');
 
   try {
-    const res  = await fetch(CONFIG.GAS_URL, {
+    const res = await fetch(CONFIG.GAS_URL, {
       method: 'POST',
-      body:   JSON.stringify({ action: 'setConfig', pin: CONFIG.ADMIN_PIN, imgbbKey: key }),
+      body: JSON.stringify({ action: 'setConfig', pin: CONFIG.ADMIN_PIN, imgbbKey: key }),
     });
     const data = await res.json();
     if (data.ok || data.success) {
@@ -384,7 +390,7 @@ function openMapPicker() {
   if (!adminPickerMap) {
     adminPickerMap = L.map('admin-map-pick', {
       center: CONFIG.MAP_CENTER,
-      zoom:   CONFIG.MAP_ZOOM,
+      zoom: CONFIG.MAP_ZOOM,
     });
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       attribution: '© OpenStreetMap © CARTO',
@@ -425,13 +431,13 @@ function closeMapPicker() {
 // ── Comments ───────────────────────────── //
 async function submitComment(reportId) {
   const input = document.getElementById(`comment-input-${reportId}`);
-  const text  = input?.value.trim();
+  const text = input?.value.trim();
   if (!text) return;
 
   try {
-    const res  = await fetch(CONFIG.GAS_URL, {
+    const res = await fetch(CONFIG.GAS_URL, {
       method: 'POST',
-      body:   JSON.stringify({
+      body: JSON.stringify({
         action: 'addComment', id: reportId,
         text, author: 'Admin', pin: CONFIG.ADMIN_PIN,
       }),
@@ -464,9 +470,9 @@ async function submitComment(reportId) {
 // ── Report status ──────────────────────── //
 async function changeReportStatus(reportId, newStatus, btn) {
   try {
-    const res  = await fetch(CONFIG.GAS_URL, {
+    const res = await fetch(CONFIG.GAS_URL, {
       method: 'POST',
-      body:   JSON.stringify({
+      body: JSON.stringify({
         action: 'updateStatus', id: reportId,
         reportStatus: newStatus, pin: CONFIG.ADMIN_PIN,
       }),
@@ -532,13 +538,13 @@ function startCctvRefresh() {
 
 function addCamera() {
   const name = document.getElementById('cctv-name').value.trim();
-  const url  = document.getElementById('cctv-url').value.trim();
+  const url = document.getElementById('cctv-url').value.trim();
   if (!name || !url) return toast('Name and URL required', 'error');
   cctvCameras.push({ name, url });
   saveCameras();
   renderCameras();
   document.getElementById('cctv-name').value = '';
-  document.getElementById('cctv-url').value  = '';
+  document.getElementById('cctv-url').value = '';
   toast('Camera added', 'success');
 }
 
@@ -551,32 +557,32 @@ function removeCamera(i) {
 // ── Blur tool ──────────────────────────── //
 function initBlurTool() {
   const canvas = document.getElementById('blur-canvas');
-  const ctx    = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d');
 
-  canvas.addEventListener('mousedown',  e => startRect(e, canvas));
-  canvas.addEventListener('mousemove',  e => drawRect(e, canvas, ctx));
-  canvas.addEventListener('mouseup',    e => endRect(e, canvas));
+  canvas.addEventListener('mousedown', e => startRect(e, canvas));
+  canvas.addEventListener('mousemove', e => drawRect(e, canvas, ctx));
+  canvas.addEventListener('mouseup', e => endRect(e, canvas));
   canvas.addEventListener('touchstart', e => startRect(e.touches[0], canvas), { passive: true });
-  canvas.addEventListener('touchmove',  e => { e.preventDefault(); drawRect(e.touches[0], canvas, ctx); }, { passive: false });
-  canvas.addEventListener('touchend',   e => endRect(e.changedTouches[0], canvas));
+  canvas.addEventListener('touchmove', e => { e.preventDefault(); drawRect(e.touches[0], canvas, ctx); }, { passive: false });
+  canvas.addEventListener('touchend', e => endRect(e.changedTouches[0], canvas));
 
-  document.getElementById('blur-prev').addEventListener('click',   () => changeBlurPhoto(-1));
-  document.getElementById('blur-next').addEventListener('click',   () => changeBlurPhoto(1));
-  document.getElementById('blur-clear').addEventListener('click',  () => { blurState.rects = []; redrawCanvas(ctx, canvas); });
-  document.getElementById('blur-apply').addEventListener('click',  () => applyBlur(ctx, canvas));
-  document.getElementById('blur-done').addEventListener('click',   () => saveAllBlurred());
+  document.getElementById('blur-prev').addEventListener('click', () => changeBlurPhoto(-1));
+  document.getElementById('blur-next').addEventListener('click', () => changeBlurPhoto(1));
+  document.getElementById('blur-clear').addEventListener('click', () => { blurState.rects = []; redrawCanvas(ctx, canvas); });
+  document.getElementById('blur-apply').addEventListener('click', () => applyBlur(ctx, canvas));
+  document.getElementById('blur-done').addEventListener('click', () => saveAllBlurred());
   document.getElementById('blur-cancel').addEventListener('click', () => closeBlurTool());
 }
 
-window.openBlur = function(reportId) {
+window.openBlur = function (reportId) {
   const report = allReports.find(r => r.id === reportId);
   if (!report?.photos?.length) return;
   blurState = {
-    photos:    [...report.photos],
-    index:     0,
-    rects:     [],
-    drawing:   false,
-    startX:    0, startY: 0,
+    photos: [...report.photos],
+    index: 0,
+    rects: [],
+    drawing: false,
+    startX: 0, startY: 0,
     reportId,
     localUrls: {}, // blob/data URLs keyed by index — avoids canvas CORS taint
   };
@@ -586,8 +592,8 @@ window.openBlur = function(reportId) {
 
 async function loadBlurPhoto() {
   const canvas = document.getElementById('blur-canvas');
-  const ctx    = canvas.getContext('2d');
-  const src    = blurState.photos[blurState.index];
+  const ctx = canvas.getContext('2d');
+  const src = blurState.photos[blurState.index];
 
   // Use cached local URL if already loaded, or if it's already a data URL
   let imageUrl = blurState.localUrls[blurState.index];
@@ -600,9 +606,9 @@ async function loadBlurPhoto() {
       // External URL (ImgBB) — fetch as blob to avoid canvas CORS taint
       // Without this, toDataURL() throws SecurityError and blur never saves
       try {
-        const res  = await fetch(src);
+        const res = await fetch(src);
         const blob = await res.blob();
-        imageUrl   = URL.createObjectURL(blob);
+        imageUrl = URL.createObjectURL(blob);
       } catch (err) {
         toast('Cannot load photo: ' + err.message, 'error');
         return;
@@ -613,7 +619,7 @@ async function loadBlurPhoto() {
 
   const img = new Image();
   img.onload = () => {
-    canvas.width  = img.naturalWidth;
+    canvas.width = img.naturalWidth;
     canvas.height = img.naturalHeight;
     ctx.drawImage(img, 0, 0);
     blurState.rects = [];
@@ -627,23 +633,23 @@ async function loadBlurPhoto() {
 function getCanvasCoords(e, canvas) {
   const r = canvas.getBoundingClientRect();
   return {
-    x: (e.clientX - r.left) * (canvas.width  / r.width),
-    y: (e.clientY - r.top)  * (canvas.height / r.height),
+    x: (e.clientX - r.left) * (canvas.width / r.width),
+    y: (e.clientY - r.top) * (canvas.height / r.height),
   };
 }
 
 function startRect(e, canvas) {
   const { x, y } = getCanvasCoords(e, canvas);
   blurState.drawing = true;
-  blurState.startX  = x;
-  blurState.startY  = y;
+  blurState.startX = x;
+  blurState.startY = y;
 }
 function drawRect(e, canvas, ctx) {
   if (!blurState.drawing) return;
   const { x, y } = getCanvasCoords(e, canvas);
   redrawCanvas(ctx, canvas);
   ctx.strokeStyle = '#ef4444';
-  ctx.lineWidth   = 3;
+  ctx.lineWidth = 3;
   ctx.strokeRect(blurState.startX, blurState.startY, x - blurState.startX, y - blurState.startY);
 }
 function endRect(e, canvas) {
@@ -690,7 +696,7 @@ function applyBlur(ctx, canvas) {
   }
 
   // Update both photos array (for upload) and localUrls cache (for redraw)
-  blurState.photos[blurState.index]    = dataUrl;
+  blurState.photos[blurState.index] = dataUrl;
   blurState.localUrls[blurState.index] = dataUrl;
   blurState.rects = [];
   toast('Blur applied to this photo', 'success');
@@ -712,13 +718,13 @@ async function saveAllBlurred() {
         p.startsWith('http') ? Promise.resolve(p) : uploadToImgBB(p)
       )
     );
-    const res  = await fetch(CONFIG.GAS_URL, {
+    const res = await fetch(CONFIG.GAS_URL, {
       method: 'POST',
-      body:   JSON.stringify({
+      body: JSON.stringify({
         action: 'updatePhotos',
-        id:     blurState.reportId,
+        id: blurState.reportId,
         photos: uploadedUrls,
-        pin:    CONFIG.ADMIN_PIN,
+        pin: CONFIG.ADMIN_PIN,
       }),
     });
     const data = await res.json();
@@ -749,16 +755,16 @@ function toast(msg, type = 'default', duration = 3000) {
 
 // ── Cursor ─────────────────────────────── //
 function initCursor() {
-  const dot  = document.getElementById('cursor-dot');
+  const dot = document.getElementById('cursor-dot');
   const ring = document.getElementById('cursor-ring');
-  let mx=0, my=0, rx=0, ry=0;
-  document.addEventListener('mousemove', e => { mx=e.clientX; my=e.clientY; });
-  document.addEventListener('mouseleave',() => { dot.style.opacity='0'; ring.style.opacity='0'; });
-  document.addEventListener('mouseenter',() => { dot.style.opacity='1'; ring.style.opacity='1'; });
+  let mx = 0, my = 0, rx = 0, ry = 0;
+  document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
+  document.addEventListener('mouseleave', () => { dot.style.opacity = '0'; ring.style.opacity = '0'; });
+  document.addEventListener('mouseenter', () => { dot.style.opacity = '1'; ring.style.opacity = '1'; });
   (function loop() {
-    rx += (mx-rx)*.12; ry += (my-ry)*.12;
-    dot.style.left  = mx+'px'; dot.style.top  = my+'px';
-    ring.style.left = rx+'px'; ring.style.top = ry+'px';
+    rx += (mx - rx) * .12; ry += (my - ry) * .12;
+    dot.style.left = mx + 'px'; dot.style.top = my + 'px';
+    ring.style.left = rx + 'px'; ring.style.top = ry + 'px';
     requestAnimationFrame(loop);
   })();
 }
