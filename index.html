@@ -24,40 +24,37 @@
       top: calc(var(--nav-h) + .75rem);
       left: 50%; transform: translateX(-50%);
       z-index: 400;
-      display: flex; gap: .4rem; flex-wrap: wrap; justify-content: center;
+      display: flex; gap: .5rem;
       padding: 0 1rem;
       max-width: 100vw;
+      width: 100%;
+      justify-content: center;
     }
-    .filter-btn {
+    .filter-select {
       font-family: 'Syne Mono', monospace;
-      font-size: .55rem; letter-spacing: .1em; text-transform: uppercase;
-      padding: .3rem .7rem;
-      background: rgba(17,14,9,.88); backdrop-filter: blur(8px);
+      font-size: .6rem; letter-spacing: .08em; text-transform: uppercase;
+      padding: .45rem 1.8rem .45rem .8rem;
+      background: rgba(17,14,9,.92); backdrop-filter: blur(8px);
       border: 1px solid var(--md-border-lt); border-radius: 50px;
-      color: var(--md-muted); cursor: pointer; transition: all .2s;
-      white-space: nowrap;
+      color: var(--md-muted); cursor: pointer; transition: border-color .2s, color .2s;
+      max-width: 32vw;
+      text-overflow: ellipsis;
+      -webkit-appearance: none; appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%237a6d58' stroke-width='1.4' fill='none'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right .75rem center;
     }
-    .filter-btn.active { color: var(--md-gold-lt); border-color: var(--md-gold-dk); }
-    .filter-btn:hover  { color: var(--md-gold-lt); border-color: var(--md-gold-dk); }
+    .filter-select:focus {
+      outline: none;
+      border-color: var(--md-gold-dk); color: var(--md-gold-lt);
+      box-shadow: 0 0 0 2px var(--md-gold-glow);
+    }
+    .filter-select.has-value { color: var(--md-gold-lt); border-color: var(--md-gold-dk); }
+    .filter-select option { background: var(--md-panel); color: var(--md-cream); }
 
-    /* ── Filter divider between category + time ── */
-    .filter-divider {
-      width: 1px; height: 20px; align-self: center;
-      background: var(--md-border-lt);
+    @media (max-width: 480px) {
+      .filter-select { font-size: .56rem; padding: .42rem 1.6rem .42rem .65rem; max-width: 30vw; }
     }
-
-    /* ── Time filter buttons ─────────── */
-    .time-btn {
-      font-family: 'Syne Mono', monospace;
-      font-size: .55rem; letter-spacing: .1em; text-transform: uppercase;
-      padding: .3rem .7rem;
-      background: rgba(17,14,9,.88); backdrop-filter: blur(8px);
-      border: 1px solid var(--md-border-lt); border-radius: 50px;
-      color: var(--md-muted); cursor: pointer; transition: all .2s;
-      white-space: nowrap;
-    }
-    .time-btn.active { color: var(--md-gold-lt); border-color: var(--md-gold-dk); }
-    .time-btn:hover  { color: var(--md-gold-lt); border-color: var(--md-gold-dk); }
 
     /* ── Address search bar ──────────── */
     #search-bar {
@@ -283,17 +280,18 @@
 
   <!-- Filter bar -->
   <div id="filter-bar">
-    <button class="filter-btn active" data-filter="all">All</button>
-    <button class="filter-btn" data-filter="Security">Security</button>
-    <button class="filter-btn" data-filter="Emergency">Emergency</button>
-    <button class="filter-btn" data-filter="Infrastructure">Infrastructure</button>
-    <button class="filter-btn" data-filter="Animals">Animals</button>
-    <button class="filter-btn" data-filter="Civil">Civil</button>
-    <div class="filter-divider"></div>
-    <button class="time-btn" data-time="today">Today</button>
-    <button class="time-btn" data-time="week">7 Days</button>
-    <button class="time-btn" data-time="month">30 Days</button>
-    <button class="time-btn active" data-time="all">All Time</button>
+    <select id="filter-category" class="filter-select" aria-label="Filter by category">
+      <option value="all">All Categories</option>
+    </select>
+    <select id="filter-subcategory" class="filter-select" aria-label="Filter by type">
+      <option value="all">All Types</option>
+    </select>
+    <select id="filter-time" class="filter-select" aria-label="Filter by time">
+      <option value="all" selected>All Time</option>
+      <option value="today">Today</option>
+      <option value="week">7 Days</option>
+      <option value="month">30 Days</option>
+    </select>
   </div>
 
   <!-- FAB -->
