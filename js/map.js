@@ -5,38 +5,52 @@
 
 // ── State ──────────────────────────────── //
 let map, markersLayer;
-let incidents        = [];
-let activeFilter     = 'all';
-let activeTimeFilter = 'all';
-let pickingCoords    = false;
-let pendingCoords    = null;
-let photoFiles       = [null, null, null];
-let submitting       = false;
-let imgbbKey         = '';
-let searchMarker     = null;
+let incidents          = [];
+let activeCategory     = 'all';
+let activeSubcategory  = 'all';
+let activeTimeFilter   = 'all';
+let pickingCoords      = false;
+let pendingCoords      = null;
+let photoFiles         = [null, null, null];
+let submitting         = false;
+let imgbbKey           = '';
+let searchMarker       = null;
+let saveViewTimer      = null;
+
+const VIEW_STORAGE_KEY = 'sait_map_view';
+const VIEW_SAVE_DELAY  = 500; // ms after map stabilises
 
 // ── Boot ───────────────────────────────── //
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   initCursor();
   initMap();
-  initTypeSelect();
   initPhotoSlots();
   initReportPanel();
+  initSearch();
+
+  // Wait for config (incl. Sheet-driven incident types) before building
+  // the type dropdown and category/sub-category filters — avoids a
+  // visible "upgrade" flicker and guarantees they reflect the same list.
+  await loadConfig();
+  initTypeSelect();
   initFilterBar();
   initTimeFilter();
-  initSearch();
-  loadConfig();
+
   loadIncidents();
 });
 
-// ── Fetch public config (ImgBB key) ───── //
+// ── Fetch public config (ImgBB key + incident types) ── //
 async function loadConfig() {
   try {
     const res  = await fetch(`${CONFIG.GAS_URL}?action=getConfig`);
     const data = await res.json();
     if (data.imgbbKey) imgbbKey = data.imgbbKey;
+    // Replaces INCIDENT_TYPES in memory if the Sheet returned rows.
+    // Falls back to the hardcoded list in config.js if not — see
+    // applyIncidentTypes() in config.js for details.
+    applyIncidentTypes(data.incidentTypes);
   } catch (err) {
-    console.warn('Could not load config:', err);
+    console.warn('Could not load config — using built-in incident types:', err);
   }
 }
 
@@ -55,9 +69,11 @@ async function uploadToImgBB(base64) {
 
 // ── Map ────────────────────────────────── //
 function initMap() {
+  const savedView = loadSavedView();
+
   map = L.map('map', {
-    center: CONFIG.MAP_CENTER,
-    zoom:   CONFIG.MAP_ZOOM,
+    center: savedView ? savedView.center : CONFIG.MAP_CENTER,
+    zoom:   savedView ? savedView.zoom   : CONFIG.MAP_ZOOM,
     zoomControl: false,
   });
 
@@ -80,6 +96,44 @@ function initMap() {
     document.getElementById('coord-dialog').classList.remove('hidden');
     stopPickingCoords();
   });
+
+  // Persist the view ~500ms after the map stops moving/zooming.
+  // 'moveend' fires once pan/zoom (incl. inertia/animation) has settled,
+  // so the debounce here is purely to avoid writing on every rapid
+  // bounce between moveend events (e.g. quick successive pans).
+  map.on('moveend', scheduleViewSave);
+}
+
+// ── Map view persistence ───────────────── //
+function loadSavedView() {
+  try {
+    const raw = localStorage.getItem(VIEW_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed.center) || parsed.center.length !== 2) return null;
+    if (typeof parsed.zoom !== 'number') return null;
+    return parsed;
+  } catch (err) {
+    console.warn('Could not read saved map view:', err);
+    return null;
+  }
+}
+
+function scheduleViewSave() {
+  clearTimeout(saveViewTimer);
+  saveViewTimer = setTimeout(saveCurrentView, VIEW_SAVE_DELAY);
+}
+
+function saveCurrentView() {
+  try {
+    const center = map.getCenter();
+    localStorage.setItem(VIEW_STORAGE_KEY, JSON.stringify({
+      center: [center.lat, center.lng],
+      zoom:   map.getZoom(),
+    }));
+  } catch (err) {
+    console.warn('Could not save map view:', err);
+  }
 }
 
 // ── Load incidents ─────────────────────── //
@@ -104,10 +158,17 @@ function renderMarkers() {
   const cutoff   = cutoffs[activeTimeFilter] ?? Infinity;
 
   const filtered = incidents.filter(i => {
-    const categoryMatch = activeFilter === 'all' || getType(i.type).category === activeFilter;
-    const ms            = i.timestamp ? now - new Date(i.timestamp).getTime() : 0;
-    const timeMatch     = ms <= cutoff;
-    return categoryMatch && timeMatch;
+    const type = getType(i.type);
+
+    const categoryMatch = activeCategory === 'all' || type.category === activeCategory;
+    const subcatMatch    = activeSubcategory === 'all' || i.type === activeSubcategory;
+
+    // Undated incidents only show under "All Time" — a missing timestamp
+    // shouldn't make a report look like it just happened.
+    const ms        = i.timestamp ? now - new Date(i.timestamp).getTime() : Infinity;
+    const timeMatch = ms <= cutoff;
+
+    return categoryMatch && subcatMatch && timeMatch;
   });
 
   filtered.forEach(inc => {
@@ -187,25 +248,69 @@ function buildPopup(inc) {
 
 // ── Filter bar ─────────────────────────── //
 function initFilterBar() {
-  document.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      activeFilter = btn.dataset.filter;
-      renderMarkers();
-    });
+  const catSel    = document.getElementById('filter-category');
+  const subcatSel = document.getElementById('filter-subcategory');
+
+  // Build category options from whatever INCIDENT_TYPES currently holds —
+  // Sheet-driven if loadConfig() succeeded, hardcoded fallback otherwise.
+  // This also fixes the old static filter buttons: renaming or adding a
+  // category in the Sheet now actually appears here.
+  const groups = groupedTypes();
+  Object.keys(groups).forEach(cat => {
+    const opt = document.createElement('option');
+    opt.value = cat;
+    opt.textContent = cat;
+    catSel.appendChild(opt);
   });
+
+  function rebuildSubcategoryOptions() {
+    subcatSel.innerHTML = '<option value="all">All Types</option>';
+    const cat = catSel.value;
+    const types = cat === 'all' ? INCIDENT_TYPES : (groups[cat] || []);
+    types.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.value;
+      opt.textContent = `${t.icon} ${t.label}`;
+      subcatSel.appendChild(opt);
+    });
+  }
+
+  catSel.addEventListener('change', () => {
+    activeCategory    = catSel.value;
+    activeSubcategory = 'all'; // reset sub-category whenever category changes
+    rebuildSubcategoryOptions();
+    updateSelectStyle(catSel);
+    updateSelectStyle(subcatSel);
+    renderMarkers();
+  });
+
+  subcatSel.addEventListener('change', () => {
+    activeSubcategory = subcatSel.value;
+    // Keep category in sync — picking a sub-category implies its category,
+    // useful since "All Categories" + a specific sub-type is a valid state.
+    if (activeSubcategory !== 'all') {
+      activeCategory = getType(activeSubcategory).category;
+      catSel.value = activeCategory;
+      updateSelectStyle(catSel);
+    }
+    updateSelectStyle(subcatSel);
+    renderMarkers();
+  });
+
+  rebuildSubcategoryOptions();
+}
+
+function updateSelectStyle(sel) {
+  sel.classList.toggle('has-value', sel.value !== 'all');
 }
 
 // ── Time filter ────────────────────────── //
 function initTimeFilter() {
-  document.querySelectorAll('.time-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      activeTimeFilter = btn.dataset.time;
-      renderMarkers();
-    });
+  const sel = document.getElementById('filter-time');
+  sel.addEventListener('change', () => {
+    activeTimeFilter = sel.value;
+    updateSelectStyle(sel);
+    renderMarkers();
   });
 }
 

@@ -52,6 +52,11 @@ function initPin() {
       CONFIG.ADMIN_PIN = entered;
       imgbbKey = data.imgbbKey || '';
 
+      // Replaces INCIDENT_TYPES in memory with Sheet-driven rows if present.
+      // Falls back to the hardcoded list in config.js if the Sheet is empty
+      // or unreachable — see applyIncidentTypes() in config.js.
+      applyIncidentTypes(data.incidentTypes);
+
       document.getElementById('login-screen').style.display = 'none';
       const screen = document.getElementById('admin-screen');
       screen.classList.add('active');
