@@ -80,3 +80,21 @@ const REPORT_STATUSES = [
 function getStatus(value) {
   return REPORT_STATUSES.find(s => s.value === value) || REPORT_STATUSES[0];
 }
+
+/*
+  Builds a wa.me deep link pre-filled with a short, privacy-friendly
+  message: incident type + area only — no description, since this
+  link may be opened/forwarded outside the app's review flow.
+
+  number must already be in international format with no symbols
+  (e.g. '27821234567') — normaliseWhatsApp() on the backend ensures
+  this before it ever reaches the client.
+*/
+function buildWhatsAppLink(number, adminName, type, area) {
+  if (!number) return null;
+  const t = getType(type);
+  const greeting = adminName ? `Hi ${adminName}, ` : 'Hi, ';
+  const text = `${greeting}new incident reported — ${t.icon} ${t.label} near ${area}. ` +
+               `Please check the SA Incident Tracker map for details.`;
+  return `https://wa.me/${number}?text=${encodeURIComponent(text)}`;
+}

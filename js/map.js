@@ -26,6 +26,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initMap();
   initPhotoSlots();
   initReportPanel();
+  initNotifyDialog();
   initSearch();
 
   // Wait for config (incl. Sheet-driven incident types) before building
@@ -424,10 +425,20 @@ function initReportPanel() {
       panel.classList.remove('open');
       stopPickingCoords();
       document.getElementById('coord-dialog').classList.add('hidden');
+      document.getElementById('notify-dialog').classList.add('hidden');
     }
   });
 
   form.addEventListener('submit', handleSubmit);
+}
+
+// ── Notify dialog ──────────────────────── //
+function initNotifyDialog() {
+  document.getElementById('notify-whatsapp-link').addEventListener('click', () => {
+    // Let the link navigate (opens WhatsApp / wa.me) — just close our dialog after.
+    setTimeout(closeNotifyDialog, 300);
+  });
+  document.getElementById('notify-skip').addEventListener('click', closeNotifyDialog);
 }
 
 // ── Coord picker ───────────────────────── //
@@ -598,7 +609,12 @@ async function handleSubmit(e) {
       initPhotoSlots();
       document.getElementById('inc-lat').value = '';
       document.getElementById('inc-lng').value = '';
-      toast('Report submitted — thank you. It will appear once reviewed.', 'success', 5000);
+
+      if (data.notify && data.notify.whatsappNumber) {
+        showNotifyDialog(data.notify, type, area);
+      } else {
+        toast('Report submitted — thank you. It will appear once reviewed.', 'success', 5000);
+      }
     } else {
       showFormError(data.error || 'Submission failed. Please try again.');
     }
@@ -615,6 +631,33 @@ function showFormError(msg) {
   const el = document.getElementById('form-error');
   el.textContent = msg;
   el.classList.remove('hidden');
+}
+
+// ── Post-submit WhatsApp notify dialog ─── //
+/*
+  Shown after a successful report submission, only when the backend
+  matched an area admin (or fell back to the super admin) with a
+  WhatsApp number on file. Tapping the button opens a wa.me deep link
+  pre-filled with a short, privacy-friendly message — the reporter
+  still has to tap Send themselves inside WhatsApp; this is a deep
+  link, not an automatic push.
+*/
+function showNotifyDialog(notify, type, area) {
+  const link = buildWhatsAppLink(notify.whatsappNumber, notify.name, type, area);
+  if (!link) {
+    toast('Report submitted — thank you. It will appear once reviewed.', 'success', 5000);
+    return;
+  }
+
+  const dialog = document.getElementById('notify-dialog');
+  document.getElementById('notify-admin-name').textContent = notify.name || 'the admin';
+  document.getElementById('notify-whatsapp-link').href = link;
+  dialog.classList.remove('hidden');
+}
+
+function closeNotifyDialog() {
+  document.getElementById('notify-dialog').classList.add('hidden');
+  toast('Report submitted — thank you. It will appear once reviewed.', 'success', 5000);
 }
 
 // ── Toast ──────────────────────────────── //

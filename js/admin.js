@@ -11,13 +11,85 @@ let imgbbKey = '';
 let adminPickerMap = null;
 let adminPickedCoords = null;
 let blurState = { photos: [], index: 0, rects: [], drawing: false, startX: 0, startY: 0, reportId: null };
+let currentAdmin = null;  // { id, name, role, lat, lng, radiusKm, whatsappNumber } — set after login
+let allAdmins = [];        // populated for super admins via listAdmins
 
 // ── Boot ───────────────────────────────── //
 document.addEventListener('DOMContentLoaded', () => {
   initCursor();
-  initPin();
+
+  const inviteToken = new URLSearchParams(location.search).get('invite');
+  if (inviteToken) {
+    initInviteClaim(inviteToken);
+  } else {
+    initPin();
+  }
   // Admin screen inits after login
 });
+
+// ── Invite claim (new area admin sets their own PIN) ── //
+async function initInviteClaim(token) {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('invite-claim-screen').style.display = 'flex';
+
+  const nameEl  = document.getElementById('invite-claim-name');
+  const errEl   = document.getElementById('invite-claim-error');
+  const formEl  = document.getElementById('invite-claim-form');
+
+  try {
+    const res  = await fetch(`${CONFIG.GAS_URL}?action=inviteInfo&token=${encodeURIComponent(token)}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    nameEl.textContent = data.name || 'there';
+  } catch (e) {
+    errEl.textContent = e.message;
+    formEl.classList.add('hidden');
+    return;
+  }
+
+  formEl.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errEl.textContent = '';
+
+    const pin1 = document.getElementById('invite-pin').value.trim();
+    const pin2 = document.getElementById('invite-pin-confirm').value.trim();
+
+    if (!/^\d{6}$/.test(pin1)) return errEl.textContent = 'PIN must be exactly 6 digits';
+    if (pin1 !== pin2)         return errEl.textContent = 'PINs do not match';
+
+    const btn = document.getElementById('invite-claim-submit');
+    btn.disabled = true;
+    btn.textContent = 'Setting PIN…';
+
+    try {
+      const res  = await fetch(CONFIG.GAS_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'claimInvite', token, pin: pin1 }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        document.getElementById('invite-claim-screen').innerHTML = `
+          <div class="login-box card">
+            <span class="login-ornament">✦</span>
+            <h2 class="login-title">PIN Set ✓</h2>
+            <p class="login-sub">Welcome, ${sanitise(data.name)}. You can now log in with your new PIN.</p>
+            <a href="${location.pathname}" class="btn btn-gold" style="width:100%;justify-content:center">
+              Go to Login
+            </a>
+          </div>`;
+      } else {
+        errEl.textContent = data.error || 'Could not set PIN';
+        btn.disabled = false;
+        btn.textContent = 'Set My PIN';
+      }
+    } catch (err) {
+      errEl.textContent = 'Network error: ' + err.message;
+      btn.disabled = false;
+      btn.textContent = 'Set My PIN';
+    }
+  });
+}
 
 // ── PIN ────────────────────────────────── //
 function initPin() {
@@ -51,6 +123,7 @@ function initPin() {
       // If we got here, PIN is valid. Store it for subsequent requests.
       CONFIG.ADMIN_PIN = entered;
       imgbbKey = data.imgbbKey || '';
+      currentAdmin = data.admin || null;
 
       // Replaces INCIDENT_TYPES in memory with Sheet-driven rows if present.
       // Falls back to the hardcoded list in config.js if the Sheet is empty
@@ -68,6 +141,14 @@ function initPin() {
       if (imgbbKey) {
         document.getElementById('imgbb-status').textContent = '✓ Key set';
         document.getElementById('imgbb-status').className = 'success mono';
+      }
+
+      // Pre-fill own WhatsApp number in Settings
+      const waInput = document.getElementById('settings-whatsapp');
+      if (waInput && currentAdmin?.whatsappNumber) {
+        waInput.value = currentAdmin.whatsappNumber;
+        document.getElementById('whatsapp-status').textContent = '✓ Number set';
+        document.getElementById('whatsapp-status').className = 'success mono';
       }
     } catch (e) {
       err.textContent = e.message === 'Unauthorised' ? 'Incorrect PIN' : e.message;
@@ -128,6 +209,30 @@ function initAdminScreen() {
   loadReports();
   loadCameras();
   bindAdminEvents();
+  applyRoleVisibility();
+
+  if (currentAdmin?.role === 'super') {
+    loadAdmins();
+  }
+}
+
+/*
+  Shows/hides UI sections based on the logged-in admin's role.
+  Area admins never see "Manage Admins" — the super-only section
+  that can create new admins or change territories.
+*/
+function applyRoleVisibility() {
+  const isSuper = currentAdmin?.role === 'super';
+  document.querySelectorAll('[data-role="super-only"]').forEach(el => {
+    el.classList.toggle('hidden', !isSuper);
+  });
+
+  // Show the logged-in admin's name + role in the nav for clarity,
+  // especially useful once multiple people share this dashboard.
+  const label = document.getElementById('admin-whoami');
+  if (label && currentAdmin) {
+    label.textContent = `${currentAdmin.name || 'Admin'} · ${isSuper ? 'Super Admin' : 'Area Admin'}`;
+  }
 }
 
 function bindAdminEvents() {
@@ -156,12 +261,36 @@ function bindAdminEvents() {
   document.getElementById('btn-add-incident').addEventListener('click', addVerifiedIncident);
 
   // Map coord picker for admin form
-  document.getElementById('btn-admin-pick-map').addEventListener('click', openMapPicker);
+  document.getElementById('btn-admin-pick-map').addEventListener('click', () => openMapPicker('incident'));
   document.getElementById('map-picker-cancel').addEventListener('click', closeMapPicker);
   document.getElementById('map-picker-confirm').addEventListener('click', confirmMapPick);
 
   // Settings — ImgBB key
   document.getElementById('btn-save-imgbb').addEventListener('click', saveImgBBKey);
+
+  // Settings — own WhatsApp number (visible to all roles)
+  document.getElementById('btn-save-whatsapp').addEventListener('click', saveOwnWhatsApp);
+
+  // Manage Admins (super only — buttons still bound, but section is hidden via applyRoleVisibility)
+  document.getElementById('btn-admin-pick-territory').addEventListener('click', () => openMapPicker('admin'));
+  document.getElementById('map-picker-radius').addEventListener('input', updateRadiusPreview);
+  document.getElementById('btn-create-admin').addEventListener('click', createAdminFromForm);
+
+  // Invite link dialog
+  document.getElementById('invite-link-close').addEventListener('click', () => {
+    document.getElementById('invite-link-dialog').classList.add('hidden');
+  });
+  document.getElementById('invite-link-copy').addEventListener('click', async () => {
+    const input = document.getElementById('invite-link-url');
+    try {
+      await navigator.clipboard.writeText(input.value);
+      toast('Link copied', 'success');
+    } catch {
+      // Fallback for browsers without Clipboard API permission
+      input.select?.();
+      toast('Select and copy the link manually', 'default');
+    }
+  });
 
   // Blur tool
   initBlurTool();
@@ -263,11 +392,12 @@ function buildReportCard(r) {
       </div>
       <div style="text-align:right">
         <span class="badge badge-${r.status}">${r.status}</span>
+        ${r.unassigned ? `<span class="badge" style="color:var(--md-danger);border-color:var(--md-danger);background:rgba(201,76,76,.08);display:block;margin-top:.3rem">⚠ Unassigned</span>` : ''}
         <div class="report-time" style="margin-top:.4rem">${time}</div>
       </div>
     </div>
     <p class="report-desc">${sanitise(r.description)}</p>
-    ${r.lat ? `<p class="report-coords">📌 ${r.lat}, ${r.lng}</p>` : ''}
+    ${r.lat ? `<p class="report-coords">📌 ${r.lat}, ${r.lng}</p>` : '<p class="report-coords">📌 No location set</p>'}
     ${photosHtml}
     <div class="report-actions">${actionsHtml}</div>
 
@@ -339,7 +469,147 @@ async function addVerifiedIncident() {
   } catch { toast('Network error', 'error'); }
 }
 
-// ── Admin type select ──────────────────── //
+// ── Manage Admins (super only) ─────────── //
+
+async function loadAdmins() {
+  try {
+    const res = await fetch(`${CONFIG.GAS_URL}?action=listAdmins&pin=${CONFIG.ADMIN_PIN}`);
+    const data = await res.json();
+    if (data.error) {
+      toast(`Could not load admins: ${data.error}`, 'error', 6000);
+      return;
+    }
+    allAdmins = data.admins || [];
+    renderAdminsList();
+  } catch (err) {
+    toast(`Network error loading admins: ${err.message}`, 'error', 6000);
+  }
+}
+
+function renderAdminsList() {
+  const list = document.getElementById('admins-list');
+  if (!list) return;
+
+  const areaAdmins = allAdmins.filter(a => a.role === 'area');
+
+  if (!areaAdmins.length) {
+    list.innerHTML = `<p style="font-size:.78rem;color:var(--md-muted);font-weight:300">No area admins yet — add one below.</p>`;
+    return;
+  }
+
+  list.innerHTML = areaAdmins.map(a => `
+    <div class="admin-row card" style="padding:.9rem 1rem;margin-bottom:.6rem">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem">
+        <div>
+          <div style="font-family:'Cinzel',serif;font-size:.88rem;color:var(--md-gold-lt)">${sanitise(a.name)}</div>
+          <div style="font-size:.72rem;color:var(--md-muted);margin-top:.15rem">
+            📲 ${sanitise(a.whatsappNumber || '—')} · 📍 ${a.radiusKm ?? '—'}km radius
+          </div>
+          <div style="font-family:'Syne Mono',monospace;font-size:.58rem;letter-spacing:.08em;margin-top:.4rem">
+            ${a.active ? '<span class="success">● Active</span>' : '<span class="danger">● Inactive</span>'}
+            ${a.hasPin ? '<span class="muted"> · PIN set</span>' : '<span class="gold"> · Awaiting invite claim</span>'}
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:.35rem">
+          ${a.active
+            ? `<button class="btn btn-danger btn-sm" onclick="deactivateAdminRow('${a.id}')">Deactivate</button>`
+            : `<button class="btn btn-success btn-sm" onclick="reactivateAdminRow('${a.id}')">Reactivate</button>`}
+          ${!a.hasPin ? `<button class="btn btn-outline btn-sm" onclick="showInviteLink('${a.id}', '${sanitise(a.name)}')">Get Invite Link</button>` : ''}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function createAdminFromForm() {
+  const name           = document.getElementById('newadmin-name').value.trim();
+  const whatsappNumber = document.getElementById('newadmin-whatsapp').value.trim();
+  const lat             = parseFloat(document.getElementById('newadmin-lat').value);
+  const lng             = parseFloat(document.getElementById('newadmin-lng').value);
+  const radiusKm        = parseFloat(document.getElementById('newadmin-radius').value);
+
+  if (!name)             return toast('Name required', 'error');
+  if (!whatsappNumber)   return toast('WhatsApp number required', 'error');
+  if (isNaN(lat) || isNaN(lng)) return toast('Pick a location on the map first', 'error');
+  if (!radiusKm || radiusKm <= 0) return toast('Radius (km) required', 'error');
+
+  try {
+    const res = await fetch(CONFIG.GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'createAdmin', pin: CONFIG.ADMIN_PIN,
+        name, whatsappNumber, lat, lng, radiusKm,
+      }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      toast('Admin created — share their invite link', 'success');
+      document.getElementById('newadmin-name').value = '';
+      document.getElementById('newadmin-whatsapp').value = '';
+      document.getElementById('newadmin-lat').value = '';
+      document.getElementById('newadmin-lng').value = '';
+      document.getElementById('newadmin-radius').value = '';
+      loadAdmins();
+      showInviteLinkFromToken(name, data.inviteToken);
+    } else {
+      toast(data.error || 'Failed to create admin', 'error');
+    }
+  } catch (err) {
+    toast('Network error: ' + err.message, 'error');
+  }
+}
+
+async function deactivateAdminRow(id) {
+  if (!confirm('Deactivate this admin? They will no longer be able to log in, and reports in their territory will route to the super admin.')) return;
+  try {
+    const res = await fetch(CONFIG.GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'deactivateAdmin', id, pin: CONFIG.ADMIN_PIN }),
+    });
+    const data = await res.json();
+    if (data.ok) { toast('Admin deactivated', 'success'); loadAdmins(); loadReports(); }
+    else toast(data.error || 'Failed', 'error');
+  } catch (err) { toast('Network error: ' + err.message, 'error'); }
+}
+
+async function reactivateAdminRow(id) {
+  try {
+    const res = await fetch(CONFIG.GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'reactivateAdmin', id, pin: CONFIG.ADMIN_PIN }),
+    });
+    const data = await res.json();
+    if (data.ok) { toast('Admin reactivated', 'success'); loadAdmins(); loadReports(); }
+    else toast(data.error || 'Failed', 'error');
+  } catch (err) { toast('Network error: ' + err.message, 'error'); }
+}
+
+async function showInviteLink(id, name) {
+  try {
+    const res = await fetch(CONFIG.GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'regenerateInvite', id, pin: CONFIG.ADMIN_PIN }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      toast('New invite link generated — previous link (if any) is now invalid', 'default', 4000);
+      showInviteLinkFromToken(name, data.inviteToken);
+      loadAdmins();
+    } else {
+      toast(data.error || 'Failed to generate invite', 'error');
+    }
+  } catch (err) { toast('Network error: ' + err.message, 'error'); }
+}
+
+function showInviteLinkFromToken(name, token) {
+  if (!token) return;
+  const url = `${location.origin}${location.pathname}?invite=${token}`;
+  document.getElementById('invite-link-name').textContent = name;
+  document.getElementById('invite-link-url').value = url;
+  document.getElementById('invite-link-dialog').classList.remove('hidden');
+}
+
+
 function initAdminTypeSelect() {
   const sel = document.getElementById('admin-inc-type');
   const icon = document.getElementById('admin-type-icon');
@@ -386,12 +656,53 @@ async function saveImgBBKey() {
   }
 }
 
-// ── Admin map coord picker ─────────────── //
-function openMapPicker() {
+/*
+  Available to every logged-in admin (super or area) — lets them set
+  or change their own WhatsApp number, used as the contact a public
+  reporter can notify via wa.me link after submitting in their territory.
+  Optional: leaving it blank means the public notify button won't appear
+  for reports matched to this admin.
+*/
+async function saveOwnWhatsApp() {
+  const input = document.getElementById('settings-whatsapp');
+  const number = input.value.trim();
+  if (!number) return toast('Enter a WhatsApp number', 'error');
+
+  try {
+    const res = await fetch(CONFIG.GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'updateOwnWhatsApp', pin: CONFIG.ADMIN_PIN, whatsappNumber: number }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      if (currentAdmin) currentAdmin.whatsappNumber = number;
+      document.getElementById('whatsapp-status').textContent = '✓ Number saved';
+      document.getElementById('whatsapp-status').className = 'success mono';
+      toast('WhatsApp number saved', 'success');
+    } else {
+      toast(data.error || 'Save failed', 'error');
+    }
+  } catch (err) {
+    toast('Network error: ' + err.message, 'error');
+  }
+}
+
+// ── Admin map coord picker (shared by incident form + admin-territory form) ── //
+let mapPickerMode = 'incident'; // 'incident' | 'admin'
+let adminPickerCircle = null;   // radius preview circle, admin mode only
+
+function openMapPicker(mode = 'incident') {
+  mapPickerMode = mode;
   const modal = document.getElementById('map-picker-modal');
   modal.classList.remove('hidden');
 
-  // Init map once
+  document.getElementById('map-picker-title').textContent =
+    mode === 'admin' ? 'Set Admin Territory' : 'Pick Incident Location';
+  document.getElementById('map-picker-hint').textContent =
+    mode === 'admin' ? 'Tap to set the centre point of this admin\'s coverage area' : 'Tap anywhere on the map to set coordinates';
+  document.getElementById('map-picker-radius-row').classList.toggle('hidden', mode !== 'admin');
+
+  // Init map once — reused for both modes
   if (!adminPickerMap) {
     adminPickerMap = L.map('admin-map-pick', {
       center: CONFIG.MAP_CENTER,
@@ -409,23 +720,45 @@ function openMapPicker() {
       pickMarker = L.circleMarker(e.latlng, {
         radius: 8, color: '#c9943c', fillColor: '#c9943c', fillOpacity: 1,
       }).addTo(adminPickerMap);
+
       document.getElementById('map-picker-coords').textContent =
         `${e.latlng.lat.toFixed(6)},  ${e.latlng.lng.toFixed(6)}`;
       document.getElementById('map-picker-confirm').disabled = false;
+
+      updateRadiusPreview();
     });
   }
 
   // Force resize in case modal was hidden on init
   setTimeout(() => adminPickerMap.invalidateSize(), 100);
   adminPickedCoords = null;
-  document.getElementById('map-picker-coords').textContent = 'Tap the map to set location';
+  if (adminPickerCircle) { adminPickerMap.removeLayer(adminPickerCircle); adminPickerCircle = null; }
+  document.getElementById('map-picker-coords').textContent = 'No location selected';
   document.getElementById('map-picker-confirm').disabled = true;
+}
+
+function updateRadiusPreview() {
+  if (mapPickerMode !== 'admin' || !adminPickedCoords) return;
+  const radiusKm = parseFloat(document.getElementById('map-picker-radius').value) || 0;
+  if (adminPickerCircle) adminPickerMap.removeLayer(adminPickerCircle);
+  if (radiusKm > 0) {
+    adminPickerCircle = L.circle(adminPickedCoords, {
+      radius: radiusKm * 1000, // metres
+      color: '#c9943c', weight: 1.5, fillColor: '#c9943c', fillOpacity: .08,
+    }).addTo(adminPickerMap);
+  }
 }
 
 function confirmMapPick() {
   if (!adminPickedCoords) return;
-  document.getElementById('admin-lat').value = adminPickedCoords.lat.toFixed(6);
-  document.getElementById('admin-lng').value = adminPickedCoords.lng.toFixed(6);
+
+  if (mapPickerMode === 'admin') {
+    document.getElementById('newadmin-lat').value = adminPickedCoords.lat.toFixed(6);
+    document.getElementById('newadmin-lng').value = adminPickedCoords.lng.toFixed(6);
+  } else {
+    document.getElementById('admin-lat').value = adminPickedCoords.lat.toFixed(6);
+    document.getElementById('admin-lng').value = adminPickedCoords.lng.toFixed(6);
+  }
   closeMapPicker();
 }
 
