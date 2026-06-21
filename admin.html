@@ -212,6 +212,40 @@
     }
     .map-picker-actions { display: flex; gap: .75rem; }
 
+    /* ── Invite link dialog (shares the coord-dialog-box look) ── */
+    #invite-link-dialog {
+      position: fixed; inset: 0; z-index: 750;
+      background: rgba(10,9,6,.88); backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center;
+      padding: 1.5rem;
+    }
+    .coord-dialog-box {
+      background: var(--md-surface);
+      border: 1px solid var(--md-border-lt);
+      border-radius: var(--md-radius);
+      padding: 1.75rem;
+      width: 100%; max-width: 380px;
+    }
+    .coord-dialog-box h3 { font-size: 1rem; margin-bottom: .5rem; }
+    .coord-dialog-box p {
+      font-size: .82rem; font-weight: 300;
+      color: rgba(240,230,206,.6); margin-bottom: 1.25rem;
+      line-height: 1.6;
+    }
+    .coord-values {
+      font-family: 'Syne Mono', monospace; font-size: .68rem;
+      letter-spacing: .04em; color: var(--md-gold);
+      background: var(--md-panel); border: 1px solid var(--md-border);
+      border-radius: var(--md-radius); padding: .6rem .9rem;
+      margin-bottom: 1.25rem;
+    }
+    .coord-dialog-actions { display: flex; gap: .75rem; }
+    .coord-dialog-actions .btn { flex: 1; justify-content: center; }
+
+    /* ── Manage Admins ────────────────── */
+    .admin-row { transition: border-color .2s; }
+    .admin-row:hover { border-color: var(--md-gold-dk); }
+
     /* ── Comments ─────────────────────── */
     .comments-section {
       margin-top: .75rem; padding-top: .75rem;
@@ -293,12 +327,37 @@
     </div>
   </div>
 
+  <!-- ── Invite claim (new area admin sets their own PIN) ── -->
+  <div id="invite-claim-screen" style="display:none;min-height:100dvh;align-items:center;justify-content:center;padding:2rem">
+    <div class="login-box card">
+      <span class="login-ornament">✦</span>
+      <h2 class="login-title">Welcome, <span id="invite-claim-name">there</span></h2>
+      <p class="login-sub">Set a 6-digit PIN to activate your admin access.</p>
+
+      <form id="invite-claim-form" style="display:flex;flex-direction:column;gap:1rem;text-align:left">
+        <div class="form-group">
+          <label>Choose a PIN (6 digits)</label>
+          <input type="password" id="invite-pin" inputmode="numeric" maxlength="6" placeholder="••••••"/>
+        </div>
+        <div class="form-group">
+          <label>Confirm PIN</label>
+          <input type="password" id="invite-pin-confirm" inputmode="numeric" maxlength="6" placeholder="••••••"/>
+        </div>
+        <p id="invite-claim-error" class="danger" style="font-size:.78rem;min-height:1em"></p>
+        <button type="submit" class="btn btn-gold" id="invite-claim-submit" style="width:100%;justify-content:center">
+          Set My PIN
+        </button>
+      </form>
+    </div>
+  </div>
+
   <!-- ── Admin screen ──────────────────── -->
   <div id="admin-screen">
 
     <nav class="site-nav">
       <a href="/" class="nav-brand"><span class="ornament">✦</span> MD Works</a>
       <span class="nav-title">Admin · SA Incident Tracker</span>
+      <span id="admin-whoami" class="mono muted" style="font-size:.62rem;letter-spacing:.08em;margin-left:1rem"></span>
       <div class="nav-spacer"></div>
       <div class="nav-actions">
         <button class="btn btn-outline btn-sm" id="btn-refresh">↺ Refresh</button>
@@ -397,11 +456,68 @@
           </div>
         </div>
 
+        <!-- Manage Admins (super only) -->
+        <div class="sidebar-section" data-role="super-only">
+          <p class="section-label">Manage Admins</p>
+
+          <div id="admins-list" style="margin-bottom:1rem">
+            <p style="font-size:.78rem;color:var(--md-muted);font-weight:300">Loading…</p>
+          </div>
+
+          <p style="font-family:'Syne Mono',monospace;font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;color:var(--md-gold-dk);margin-bottom:.6rem">
+            + Add Area Admin
+          </p>
+          <div style="display:flex;flex-direction:column;gap:.75rem">
+            <div class="form-group">
+              <label>Name</label>
+              <input type="text" id="newadmin-name" placeholder="e.g. Sarah Naidoo"/>
+            </div>
+            <div class="form-group">
+              <label>WhatsApp Number</label>
+              <input type="text" id="newadmin-whatsapp" placeholder="e.g. 082 123 4567"/>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
+              <div class="form-group">
+                <label>Lat</label>
+                <input type="number" id="newadmin-lat" step="any" placeholder="—" readonly/>
+              </div>
+              <div class="form-group">
+                <label>Lng</label>
+                <input type="number" id="newadmin-lng" step="any" placeholder="—" readonly/>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Radius (km)</label>
+              <input type="number" id="newadmin-radius" min="0.5" step="0.5" placeholder="e.g. 3"/>
+            </div>
+            <button type="button" class="btn btn-outline btn-sm" id="btn-admin-pick-territory">
+              📍 Pick territory on map
+            </button>
+            <button class="btn btn-gold btn-sm" id="btn-create-admin">+ Create Admin</button>
+            <p style="font-size:.68rem;color:var(--md-muted);line-height:1.5">
+              The new admin sets their own PIN via a one-time invite link, shown after creation.
+            </p>
+          </div>
+        </div>
+
         <!-- Settings -->
         <div class="sidebar-section">
           <p class="section-label">Settings</p>
-          <div style="display:flex;flex-direction:column;gap:.75rem">
+          <div style="display:flex;flex-direction:column;gap:1.25rem">
             <div class="form-group">
+              <label>My WhatsApp Number</label>
+              <input type="text" id="settings-whatsapp" placeholder="e.g. 082 123 4567"/>
+              <div style="display:flex;align-items:center;gap:.75rem;margin-top:.4rem">
+                <button class="btn btn-outline btn-sm" id="btn-save-whatsapp">Save Number</button>
+                <span id="whatsapp-status" class="mono muted" style="font-size:.6rem;letter-spacing:.1em"></span>
+              </div>
+              <p style="font-size:.7rem;color:var(--md-muted);margin-top:.4rem;line-height:1.5">
+                Shown to the public as a "Notify via WhatsApp" link after they submit a report
+                in your territory. Optional — leave blank to disable.
+              </p>
+            </div>
+
+            <div class="form-group" data-role="super-only">
               <label>ImgBB API Key</label>
               <input type="password" id="settings-imgbb-key" placeholder="Paste key from imgbb.com"/>
               <div style="display:flex;align-items:center;gap:.75rem;margin-top:.4rem">
@@ -437,15 +553,37 @@
     </div>
   </div>
 
-  <!-- Map picker modal -->
+  <!-- Map picker modal (shared: incident location OR admin territory) -->
   <div id="map-picker-modal" class="hidden">
-    <h3>Pick Incident Location</h3>
-    <p>Tap anywhere on the map to set coordinates</p>
+    <h3 id="map-picker-title">Pick Incident Location</h3>
+    <p id="map-picker-hint">Tap anywhere on the map to set coordinates</p>
     <div id="admin-map-pick"></div>
     <div id="map-picker-coords">No location selected</div>
+    <div id="map-picker-radius-row" class="hidden" style="display:flex;align-items:center;gap:.6rem">
+      <label style="margin:0;white-space:nowrap">Radius (km)</label>
+      <input type="number" id="map-picker-radius" min="0.5" step="0.5" value="3" style="max-width:100px"/>
+    </div>
     <div class="map-picker-actions">
       <button class="btn btn-outline" id="map-picker-cancel">Cancel</button>
       <button class="btn btn-gold"    id="map-picker-confirm" disabled>Use Location</button>
+    </div>
+  </div>
+
+  <!-- Invite link dialog -->
+  <div id="invite-link-dialog" class="hidden">
+    <div class="coord-dialog-box">
+      <h3>Invite Link Ready ✦</h3>
+      <p>
+        Send this one-time link to <strong id="invite-link-name" style="color:var(--md-gold-lt)"></strong> via WhatsApp.
+        It lets them set their own PIN. The link stops working once used.
+      </p>
+      <input type="text" class="coord-values" readonly
+        style="word-break:break-all;text-align:left;width:100%"
+        id="invite-link-url" value="—" onclick="this.select()"/>
+      <div class="coord-dialog-actions">
+        <button class="btn btn-outline" id="invite-link-close">Close</button>
+        <button class="btn btn-gold" id="invite-link-copy">Copy Link</button>
+      </div>
     </div>
   </div>
 

@@ -223,8 +223,8 @@
       cursor: pointer;
     }
 
-    /* ── Map coord dialog ────────────── */
-    #coord-dialog {
+    /* ── Map coord dialog + notify dialog (shared overlay pattern) ── */
+    #coord-dialog, #notify-dialog {
       position: fixed; inset: 0; z-index: 600;
       background: rgba(10,9,6,.85); backdrop-filter: blur(4px);
       display: flex; align-items: center; justify-content: center;
@@ -252,7 +252,10 @@
       border-radius: var(--md-radius); padding: .6rem .9rem;
       margin-bottom: 1.25rem;
     }
-    .coord-dialog-actions { display: flex; gap: .75rem; }
+    .coord-dialog-actions {
+      display: flex; gap: .75rem;
+    }
+    .coord-dialog-actions .btn { flex: 1; justify-content: center; text-align: center; }
   </style>
 </head>
 <body>
@@ -376,6 +379,24 @@
       <div class="coord-dialog-actions">
         <button class="btn btn-outline" id="coord-cancel">Cancel</button>
         <button class="btn btn-gold"    id="coord-confirm">Use Location</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- WhatsApp notify dialog -->
+  <div id="notify-dialog" class="hidden">
+    <div class="coord-dialog-box">
+      <h3>Report Submitted ✦</h3>
+      <p>
+        Your report is awaiting review.<br/>
+        Want to give <strong id="notify-admin-name" style="color:var(--md-gold-lt)">the admin</strong>
+        a heads-up via WhatsApp?
+      </p>
+      <div class="coord-dialog-actions">
+        <button class="btn btn-outline" id="notify-skip">Not now</button>
+        <a class="btn btn-gold" id="notify-whatsapp-link" href="#" target="_blank" rel="noopener">
+          📲 Notify via WhatsApp
+        </a>
       </div>
     </div>
   </div>

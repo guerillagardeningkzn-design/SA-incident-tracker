@@ -23,14 +23,13 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { scroll-behavior: smooth; max-width: 100vw; overflow-x: hidden; }
+html { scroll-behavior: smooth; }
 
 body {
   font-family: 'Raleway', sans-serif;
   background: var(--md-dark);
   color: var(--md-cream);
   min-height: 100vh;
-  max-width: 100vw;
   overflow-x: hidden;
   line-height: 1.6;
   cursor: none;
@@ -67,8 +66,6 @@ body > * { position: relative; z-index: 1; }
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--md-border);
   gap: 1rem;
-  max-width: 100vw;
-  overflow: hidden;
 }
 .nav-brand {
   display: flex; align-items: center; gap: .5rem;
@@ -82,18 +79,9 @@ body > * { position: relative; z-index: 1; }
   font-family: 'Syne Mono', monospace;
   font-size: .6rem; letter-spacing: .18em; text-transform: uppercase;
   color: var(--md-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
 }
-.nav-spacer { flex: 1; min-width: 0; }
-.nav-actions { display: flex; gap: .6rem; align-items: center; flex-shrink: 0; }
-
-/* On narrow screens, hide the descriptive nav title so brand + admin button always fit */
-@media (max-width: 480px) {
-  .nav-title { display: none; }
-}
+.nav-spacer { flex: 1; }
+.nav-actions { display: flex; gap: .6rem; align-items: center; }
 
 /* ── Typography ───────────────────────── */
 h1, h2, h3, h4 {
