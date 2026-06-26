@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <title>SA Incident Tracker • Durban / KZN</title>
+  <title>Ifafa and Elysium Infrastructure Fault Tracker</title>
   <meta name="description" content="Community safety reporting for Durban and KZN. Report incidents anonymously — reviewed before going live."/>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23110e09'/><text x='16' y='22' text-anchor='middle' font-size='18' fill='%23c9943c' font-family='serif'>✦</text></svg>"/>
   <link rel="stylesheet" href="style.css"/>
@@ -268,7 +268,7 @@
     <a href="/" class="nav-brand">
       <span class="ornament">✦</span> MD Works
     </a>
-    <span class="nav-title">SA Incident Tracker · Durban / KZN</span>
+    <span class="nav-title">Ifafa and Elysium Infrastructure Fault Tracker</span>
     <div class="nav-spacer"></div>
     <div class="nav-actions">
       <a href="admin.html" class="btn btn-outline btn-sm">Admin ↗</a>
@@ -298,7 +298,7 @@
   </div>
 
   <!-- FAB -->
-  <button id="fab-report" title="Report an incident" aria-label="Report an incident">＋</button>
+  <button id="fab-report" title="Report an fault" aria-label="Report an faultt">＋</button>
 
   <!-- Address search -->
   <div id="search-bar">
@@ -307,10 +307,10 @@
   </div>
 
   <!-- Report panel -->
-  <div id="report-panel" role="dialog" aria-modal="true" aria-label="Report an incident">
+  <div id="report-panel" role="dialog" aria-modal="true" aria-label="Report an fault">
     <div class="panel-handle"></div>
 
-    <p class="section-label">Report an Incident</p>
+    <p class="section-label">Report an Fault</p>
     <p style="font-size:.82rem;font-weight:300;color:rgba(240,230,206,.55);margin-bottom:1rem;line-height:1.6">
       Anonymous · Your report waits for moderator review before appearing on the map.
     </p>
@@ -319,7 +319,7 @@
 
       <!-- Type -->
       <div class="form-group">
-        <label for="inc-type">Incident Type *</label>
+        <label for="inc-type">Fault Type *</label>
         <div class="type-select-wrap">
           <span class="type-icon" id="type-icon">📌</span>
           <select id="inc-type" required>
@@ -337,7 +337,7 @@
       <!-- Description -->
       <div class="form-group">
         <label for="inc-desc">What did you see / hear? *</label>
-        <textarea id="inc-desc" placeholder="Brief description of the incident…" required></textarea>
+        <textarea id="inc-desc" placeholder="Brief description of the fault…" required></textarea>
       </div>
 
       <!-- Coordinates -->
