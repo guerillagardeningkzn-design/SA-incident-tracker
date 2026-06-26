@@ -5,7 +5,7 @@
 ══════════════════════════════════════════ */
 
 const CONFIG = {
-  GAS_URL: 'https://script.google.com/macros/s/AKfycbxV4Zj-LSJzeB1ufQmfUtOlibCU2JnWvYa552SH0MWJIkbEheJ9uAGAKlmUIsYUmtSv/exec',
+  GAS_URL: 'https://script.google.com/macros/s/AKfycbxnoSmzkWgDtfMxojWhDpHV8s3gIL-h3Q6cu4BRBdjv5q628ctUCOYNbGyNN5oCUp66/exec',
   MAP_CENTER: [-30.4648047, 30.6348523], // Durban / KZN
   MAP_ZOOM: 12,
   ADMIN_PIN: '', // Set via login screen
